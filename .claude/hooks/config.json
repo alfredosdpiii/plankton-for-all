@@ -14,7 +14,7 @@
       "enabled": true,
       "js_runtime": "auto",
       "biome_nursery": "warn",
-      "biome_unsafe_autofix": false,
+      "biome_unsafe_autofix": true,
       "oxlint_tsgolint": false,
       "tsgo": false,
       "semgrep": true,
@@ -90,10 +90,25 @@
     "python": "uv",
     "javascript": "bun",
     "allowed_subcommands": {
-      "npm": ["audit", "view", "pack", "publish", "whoami", "login"],
-      "pip": ["download"],
-      "yarn": ["audit", "info"],
-      "pnpm": ["audit", "info"],
+      "npm": [
+        "audit",
+        "view",
+        "pack",
+        "publish",
+        "whoami",
+        "login"
+      ],
+      "pip": [
+        "download"
+      ],
+      "yarn": [
+        "audit",
+        "info"
+      ],
+      "pnpm": [
+        "audit",
+        "info"
+      ],
       "poetry": [],
       "pipenv": []
     }

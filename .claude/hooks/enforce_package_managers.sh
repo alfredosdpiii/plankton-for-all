@@ -23,6 +23,33 @@ cmd=$(jaq -r '.tool_input?.command? // empty' <<<"${input}" 2>/dev/null) || {
 }
 [[ -z "${cmd}" ]] && { echo '{"decision": "approve"}'; exit 0; }
 
+# Strip heredoc content from cmd to avoid false positives.
+# Heredoc bodies contain data (not commands) — PM enforcement
+# should not match tool names found only inside heredoc text.
+if [[ "${cmd}" == *'<<'* ]]; then
+  cmd=$(printf '%s\n' "${cmd}" | awk '
+    BEGIN { skip = 0 }
+    skip {
+      t = $0; gsub(/^[[:space:]]+/, "", t)
+      if (t == delim) { skip = 0 }
+      next
+    }
+    /<</ {
+      s = $0; sub(/.*<<-?[[:space:]]*/, "", s)
+      sub(/^["\047]/, "", s); sub(/["\047].*/, "", s)
+      sub(/[[:space:]].*/, "", s)
+      if (s != "") {
+        delim = s; skip = 1
+        sub(/[[:space:]]*<<.*/, "", $0)
+        if ($0 != "") print
+        next
+      }
+    }
+    { print }
+  ')
+fi
+
+
 config_file="${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/config.json"
 
 # get_pm_enforcement(lang) — reads .package_managers.<lang> from config
