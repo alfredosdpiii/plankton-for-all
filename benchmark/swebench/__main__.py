@@ -23,9 +23,11 @@ def _build_parser() -> argparse.ArgumentParser:
         p.add_argument("--model", default="claude-haiku-4-5-20251001")
         p.add_argument("--timeout", type=int, default=1800)
         p.add_argument("--no-checkout", action="store_true", help="Skip repo checkout")
+        p.add_argument("--dry-run", action="store_true", help="Print commands without invoking claude")
 
     gate_p = sub.add_parser("gate", help="Validation gate (2-task dry run)")
     _add_common(gate_p)
+    gate_p.add_argument("--skip-eval", action="store_true", help="Skip criterion 4 (eval harness verdicts)")
 
     run_p = sub.add_parser("run", help="Full benchmark run")
     _add_common(run_p)
@@ -62,6 +64,8 @@ def _run_gate_cmd(args: argparse.Namespace) -> None:
         timeout=args.timeout,
         results_dir=args.results_dir,
         patches_dir=args.results_dir / "patches",
+        dry_run=args.dry_run,
+        skip_eval=args.skip_eval,
     )
     result = run_gate(tasks, config)
     print(format_gate_report(result))  # noqa: T201
@@ -84,6 +88,7 @@ def _run_all_cmd(args: argparse.Namespace) -> None:
         patches_dir=patches_dir,
         plankton_root=PLANKTON_ROOT,
         completed_ids=completed_ids,
+        dry_run=args.dry_run,
     )
     if result["aborted"]:
         print(f"ABORTED: {result['abort_reason']}")  # noqa: T201

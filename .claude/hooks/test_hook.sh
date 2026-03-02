@@ -19,7 +19,7 @@ run_self_test() {
   local failed=0
   local temp_dir
   temp_dir=$(mktemp -d)
-  trap 'rm -rf "${temp_dir}"; rm -f "${project_dir}/test_fixture_broken.toml" /tmp/.biome_path_$$ /tmp/.semgrep_session_$$ /tmp/.semgrep_session_$$.done /tmp/.jscpd_ts_session_$$ /tmp/.jscpd_session_$$ /tmp/.sfc_warned_*_$$ /tmp/.nursery_checked_$$ /tmp/.pm_warn_*_$$ /tmp/.pm_test_stderr_$$ /tmp/.pm_enforcement_$$.log' EXIT
+  trap 'rm -rf "${temp_dir}"; rm -f "${project_dir}/test_fixture_broken.toml" "${project_dir}/test_directive_broken.toml" /tmp/.biome_path_$$ /tmp/.semgrep_session_$$ /tmp/.semgrep_session_$$.done /tmp/.jscpd_ts_session_$$ /tmp/.jscpd_session_$$ /tmp/.sfc_warned_*_$$ /tmp/.nursery_checked_$$ /tmp/.pm_warn_*_$$ /tmp/.pm_test_stderr_$$ /tmp/.pm_enforcement_$$.log' EXIT
 
 
   # --- Shared test fixture (decouples tests from production config) ---
@@ -1187,15 +1187,15 @@ PM_OFF_JS_EOF
     return 0
   }
 
-  # Structural: rerun_phase2 call has | tail -1 guard (Step 1 regression)
-  local tail_guard
-  tail_guard=$(grep -c 'rerun_phase2.*| tail -1' \
+  # Structural: rerun_phase2 caller uses RERUN_PHASE2_COUNT global
+  local count_global
+  count_global=$(grep -c 'RERUN_PHASE2_COUNT' \
     "${script_dir}/multi_linter.sh" || true)
-  if [[ "${tail_guard}" -ge 1 ]]; then
-    echo "PASS rerun_phase2_tail_guard: | tail -1 present on rerun_phase2 call"
+  if [[ "${count_global}" -ge 2 ]]; then
+    echo "PASS rerun_phase2_count_global: RERUN_PHASE2_COUNT used in caller"
     passed=$((passed + 1))
   else
-    echo "FAIL rerun_phase2_tail_guard: | tail -1 missing from rerun_phase2 call"
+    echo "FAIL rerun_phase2_count_global: RERUN_PHASE2_COUNT not found in caller"
     failed=$((failed + 1))
   fi
 
@@ -1389,6 +1389,186 @@ console.log("test");' >"${ts_feedback_file}"
     echo "FAIL feedback_count_shell: ${shell_count} violations (expected >= 2)"
     failed=$((failed + 1))
   fi
+
+  echo ""
+  echo "--- Directive Code Extraction Tests ---"
+
+  # Helper: test post-subprocess exit path includes violation codes in
+  # hook_json stdout. Uses a mock claude binary that does nothing, so
+  # violations remain after "subprocess" and the directive path runs.
+  test_directive_codes() {
+    local name="$1" file="$2" content="$3" expected_pattern="$4"
+    local proj_dir="${5:-${fixture_project_dir}}"
+    echo "${content}" >"${file}"
+    local json_input='{"tool_input": {"file_path": "'"${file}"'"}}'
+
+    # Mock claude: accepts any args, exits 0, does nothing to the file
+    local mock_dir="${temp_dir}/mock_bin"
+    mkdir -p "${mock_dir}"
+    printf '#!/bin/sh\nexit 0\n' > "${mock_dir}/claude"
+    chmod +x "${mock_dir}/claude"
+
+    set +e
+    local stdout_output
+    stdout_output=$(echo "${json_input}" | \
+      PATH="${mock_dir}:${PATH}" \
+      CLAUDE_PROJECT_DIR="${proj_dir}" \
+      "${script_dir}/multi_linter.sh" 2>/dev/null)
+    local actual_exit=$?
+    set -e
+
+    if [[ "${actual_exit}" -eq 2 ]] && echo "${stdout_output}" | grep -qE "${expected_pattern}"; then
+      echo "PASS ${name}"
+      passed=$((passed + 1))
+    else
+      echo "FAIL ${name}: exit=${actual_exit}, pattern '${expected_pattern}' not in stdout"
+      echo "   stdout: ${stdout_output:0:300}"
+      failed=$((failed + 1))
+    fi
+  }
+
+  # Python: F841 (unused variable) survives ruff --fix
+  test_directive_codes "directive_codes_python" \
+    "${temp_dir}/directive_test.py" \
+    '"""Module."""
+
+
+def foo():
+    """Do foo."""
+    unused = 42
+    return 1' \
+    'F841'
+
+  # Shell: SC codes survive shfmt auto-format
+  if command -v shellcheck >/dev/null 2>&1; then
+    # shellcheck disable=SC2016 # $UNQUOTED_VAR is intentional test content
+    test_directive_codes "directive_codes_shell" \
+      "${temp_dir}/directive_test.sh" \
+      '#!/bin/bash
+echo $UNQUOTED_VAR' \
+      'SC[0-9]+'
+  else
+    echo "[skip] directive_codes_shell: shellcheck not installed"
+  fi
+
+  # Markdown: MD013 (line length) can't be auto-fixed
+  if command -v markdownlint-cli2 >/dev/null 2>&1; then
+    test_directive_codes "directive_codes_markdown" \
+      "${temp_dir}/directive_test.md" \
+      '# Test
+
+This is a very long line that definitely exceeds the eighty character limit and should trigger the MD013 line length violation.' \
+      'MD013'
+  else
+    echo "[skip] directive_codes_markdown: markdownlint-cli2 not installed"
+  fi
+
+  # YAML: yamllint codes in parentheses (truthy, indentation, etc.)
+  if command -v yamllint >/dev/null 2>&1; then
+    test_directive_codes "directive_codes_yaml" \
+      "${temp_dir}/directive_test.yml" \
+      'key: value
+truthy: yes' \
+      'truthy'
+  else
+    echo "[skip] directive_codes_yaml: yamllint not installed"
+  fi
+
+  # Dockerfile: DL codes from hadolint
+  if command -v hadolint >/dev/null 2>&1; then
+    test_directive_codes "directive_codes_dockerfile" \
+      "${temp_dir}/Dockerfile" \
+      'FROM ubuntu:latest
+RUN echo hello' \
+      'DL[0-9]+'
+  else
+    echo "[skip] directive_codes_dockerfile: hadolint not installed"
+  fi
+
+  # TOML: syntax error -> TOML_SYNTAX (must be in project tree for taplo)
+  if command -v taplo >/dev/null 2>&1; then
+    local toml_directive_fixture="${project_dir}/test_directive_broken.toml"
+    printf '[broken\nkey = "value"\n' >"${toml_directive_fixture}"
+    test_directive_codes "directive_codes_toml" \
+      "${toml_directive_fixture}" \
+      '[broken
+key = "value"' \
+      'TOML_SYNTAX'
+    rm -f "${toml_directive_fixture}"
+  else
+    echo "[skip] directive_codes_toml: taplo not installed"
+  fi
+
+  # TypeScript: biome category codes (lint/...)
+  if [[ -n "${biome_cmd:-}" ]]; then
+    test_directive_codes "directive_codes_typescript" \
+      "${temp_dir}/directive_test.ts" \
+      'const unused = "x";
+console.log("test");' \
+      'lint/' "${ts_project_dir}"
+  else
+    echo "[skip] directive_codes_typescript: biome not installed"
+  fi
+
+  # Structural: rerun_phase2 sets globals (not subshell)
+  if grep -q 'RERUN_PHASE2_COUNT=' "${script_dir}/multi_linter.sh"; then
+    echo "PASS rerun_phase2_globals: RERUN_PHASE2_COUNT assignment found"
+    passed=$((passed + 1))
+  else
+    echo "FAIL rerun_phase2_globals: RERUN_PHASE2_COUNT assignment not found"
+    failed=$((failed + 1))
+  fi
+
+  # Structural: extract_violation_codes function exists
+  if grep -q 'extract_violation_codes()' "${script_dir}/multi_linter.sh"; then
+    echo "PASS extract_fn_exists: extract_violation_codes() defined"
+    passed=$((passed + 1))
+  else
+    echo "FAIL extract_fn_exists: extract_violation_codes() not defined"
+    failed=$((failed + 1))
+  fi
+
+  # Structural: extract_violation_codes handles empty RERUN_PHASE2_RAW
+  if grep -q 'RERUN_PHASE2_RAW:-' "${script_dir}/multi_linter.sh"; then
+    echo "PASS extract_empty_guard: empty RERUN_PHASE2_RAW guard found"
+    passed=$((passed + 1))
+  else
+    echo "FAIL extract_empty_guard: empty RERUN_PHASE2_RAW guard not found"
+    failed=$((failed + 1))
+  fi
+
+  # Vue warning: .ts file should NOT produce "unhandled ext" on stderr
+  if [[ -n "${biome_cmd:-}" ]]; then
+    local vue_test_file="${temp_dir}/vue_test.ts"
+    echo 'const x: string = "hello";' >"${vue_test_file}"
+    local vue_json='{"tool_input": {"file_path": "'"${vue_test_file}"'"}}'
+    set +e
+    local vue_stderr
+    vue_stderr=$(echo "${vue_json}" | HOOK_SKIP_SUBPROCESS=1 \
+      CLAUDE_PROJECT_DIR="${ts_project_dir}" \
+      "${script_dir}/multi_linter.sh" 2>&1 >/dev/null)
+    set -e
+    if echo "${vue_stderr}" | grep -q "unhandled ext in vue check"; then
+      echo "FAIL vue_ext_no_warning: spurious 'unhandled ext' warning for .ts"
+      echo "   stderr: ${vue_stderr:0:200}"
+      failed=$((failed + 1))
+    else
+      echo "PASS vue_ext_no_warning: no spurious warning for .ts"
+      passed=$((passed + 1))
+    fi
+  else
+    echo "[skip] vue_ext_no_warning: biome not installed"
+  fi
+
+  # __init__.py prompt: structural check for specific guidance
+  if grep -q '__init__\.py.*D100\|D100.*__init__\.py' "${script_dir}/multi_linter.sh"; then
+    echo "PASS init_py_prompt: __init__.py-specific guidance found"
+    passed=$((passed + 1))
+  else
+    echo "FAIL init_py_prompt: __init__.py-specific D100 guidance not found"
+    failed=$((failed + 1))
+  fi
+
 
   echo ""
   echo "--- ShellCheck Compliance Tests ---"

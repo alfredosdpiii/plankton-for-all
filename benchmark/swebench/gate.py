@@ -29,6 +29,8 @@ class GateConfig:
     timeout: float
     results_dir: Path
     patches_dir: Path
+    dry_run: bool = False
+    skip_eval: bool = False
 
 
 @dataclass
@@ -83,9 +85,16 @@ def check_patches_nonempty(task_results: list[dict]) -> CriterionResult:
 
 def check_hook_activity(task_results: list[dict]) -> CriterionResult:
     """Criterion 3: plankton condition shows hook evidence."""
+    all_dry = all(
+        task.get("conditions", {}).get("plankton", {}).get("metadata", {}).get("dry_run") for task in task_results
+    )
+    if all_dry:
+        return CriterionResult(name="hook_activity", passed=True, detail="skipped (dry run)")
     for task in task_results:
         plankton = task["conditions"].get("plankton", {})
         meta = plankton.get("metadata", {})
+        if meta.get("dry_run"):
+            continue
         claude_output = meta.get("claude_output")
         stderr = meta.get("stderr", "")
 
@@ -201,7 +210,13 @@ def run_gate(
     wall_clock_fn: Callable[[], float] | None = None,
     expected_ranges: dict | None = None,
 ) -> GateResult:
-    """Run tasks through both conditions, check 6 criteria."""
+    """Run tasks through both conditions, check 6 criteria.
+
+    When *dry_run* is True it is forwarded to run_task_fn so the claude
+    subprocess is not invoked.  When *skip_eval* is True criterion 4
+    (eval_harness_verdicts) is marked as skipped rather than evaluated,
+    allowing the gate to pass without an evaluation harness installed.
+    """
     if not tasks:
         msg = "tasks list is empty — nothing to validate"
         raise ValueError(msg)
@@ -225,6 +240,7 @@ def run_gate(
             timeout=int(config.timeout),
             results_dir=config.results_dir,
             patches_dir=config.patches_dir,
+            dry_run=config.dry_run,
         )
         task_results.append(result)
 
@@ -237,11 +253,20 @@ def run_gate(
             if key in expected_ranges:
                 cost_kwargs[key] = expected_ranges[key]
 
+    if config.skip_eval:
+        eval_criterion = CriterionResult(
+            name="eval_harness_verdicts",
+            passed=True,
+            detail="skipped (no eval harness)",
+        )
+    else:
+        eval_criterion = check_eval_harness_verdicts(task_results)
+
     criteria = [
         check_no_crash_or_timeout(task_results),
         check_patches_nonempty(task_results),
         check_hook_activity(task_results),
-        check_eval_harness_verdicts(task_results),
+        eval_criterion,
         check_patches_differ(task_results),
         check_cost_and_time(task_results, wall_time_s, **cost_kwargs),
     ]

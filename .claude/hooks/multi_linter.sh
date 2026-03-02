@@ -422,6 +422,11 @@ RULES:
 Be concise. No explanations in the file."
   elif [[ "${ftype}" == "python" ]] && echo "${violations_json}" | jaq -e '[.[] | select(.code | startswith("D"))] | length > 0' >/dev/null 2>&1; then
     # Python with docstring violations - specialized prompt
+    # __init__.py-specific D100 hint (conditional)
+    local init_hint=""
+    if [[ "$(basename "${fp}")" == "__init__.py" ]]; then
+      init_hint=$'\n- For __init__.py: D100 needs module docstring at top of file. Keep minimal (one-line).'
+    fi
     prompt="You are a docstring fixer. Fix ALL docstring violations in ${fp}.
 
 VIOLATIONS:
@@ -433,7 +438,7 @@ DOCSTRING FIX STRATEGIES:
 - D205 (blank line): Add blank line after one-line summary
 - D400/D415 (trailing punctuation): Add period at end of first line
 - D301 (backslash): Use raw docstring r\"\"\" for regex patterns
-- D100/D104 (module/package): Add module-level docstring at file start
+- D100/D104 (module/package): Add module-level docstring at file start${init_hint}
 - D107 (__init__): Add docstring explaining initialization parameters
 
 RULES:
@@ -675,6 +680,8 @@ rerun_phase2() {
   local fp="$1"
   local ftype="$2"
   local count=0
+  RERUN_PHASE2_RAW=""
+  RERUN_PHASE2_COUNT=0
 
   case "${ftype}" in
     python)
@@ -682,6 +689,7 @@ rerun_phase2() {
       local v
       v=$(ruff check --preview --output-format=json "${fp}" 2>/dev/null) || true
       count=$(echo "${v}" | jaq 'length' 2>/dev/null | head -n1 || echo "0")
+      RERUN_PHASE2_RAW="${v}"
 
       # ty violations (uv run for project venv)
       if command -v uv >/dev/null 2>&1; then
@@ -739,6 +747,7 @@ rerun_phase2() {
         local v
         v=$(shellcheck -f json "${fp}" 2>/dev/null) || true
         count=$(echo "${v}" | jaq 'length' 2>/dev/null | head -n1 || echo "0")
+        RERUN_PHASE2_RAW="${v}"
       fi
       ;;
     yaml)
@@ -746,6 +755,7 @@ rerun_phase2() {
         local v
         v=$(yamllint -f parsable "${fp}" 2>/dev/null || true)
         [[ -n "${v}" ]] && count=$(echo "${v}" | wc -l | tr -d ' ')
+        RERUN_PHASE2_RAW="${v}"
       fi
       ;;
     json)
@@ -759,6 +769,7 @@ rerun_phase2() {
         local v
         v=$(RUST_LOG=error taplo check "${fp}" 2>&1) || true
         [[ -n "${v}" ]] && count=1
+        RERUN_PHASE2_RAW="${v}"
       fi
       ;;
     markdown)
@@ -768,6 +779,7 @@ rerun_phase2() {
         if [[ -n "${v}" ]] && ! echo "${v}" | grep -q "Summary: 0 error"; then
           count=$(echo "${v}" | grep -c ":" || echo "1")
         fi
+        RERUN_PHASE2_RAW="${v}"
       fi
       ;;
     dockerfile)
@@ -775,6 +787,7 @@ rerun_phase2() {
         local v
         v=$(hadolint --no-color -f json "${fp}" 2>/dev/null) || true
         count=$(echo "${v}" | jaq 'length' 2>/dev/null | head -n1 || echo "0")
+        RERUN_PHASE2_RAW="${v}"
       fi
       ;;
     typescript)
@@ -787,12 +800,53 @@ rerun_phase2() {
           count=$(echo "${biome_out}" | jaq '[(.diagnostics // [])[] |
             select(.severity == "error" or .severity == "warning")] | length' 2>/dev/null | head -n1 || echo "0")
         fi
+        RERUN_PHASE2_RAW="${biome_out}"
       fi
       ;;
     *) ;; # Unknown file type
   esac
 
-  echo "${count}"
+  RERUN_PHASE2_COUNT="${count}"
+}
+
+# Extract violation codes from RERUN_PHASE2_RAW for directive messages.
+# Sets global VIOLATION_CODES (comma-separated string).
+extract_violation_codes() {
+  local ftype="$1"
+  VIOLATION_CODES=""
+
+  if [[ -z "${RERUN_PHASE2_RAW:-}" ]]; then
+    return
+  fi
+
+  case "${ftype}" in
+    python)
+      # shellcheck disable=SC2016 # jaq uses $var, not shell
+      VIOLATION_CODES=$(echo "${RERUN_PHASE2_RAW}" | jaq -r '[.[].code] | unique | join(", ")' 2>/dev/null) || VIOLATION_CODES=""
+      ;;
+    shell)
+      # shellcheck disable=SC2016
+      VIOLATION_CODES=$(echo "${RERUN_PHASE2_RAW}" | jaq -r '[.[] | "SC" + (.code | tostring)] | unique | join(", ")' 2>/dev/null) || VIOLATION_CODES=""
+      ;;
+    markdown)
+      VIOLATION_CODES=$(echo "${RERUN_PHASE2_RAW}" | grep -oE 'MD[0-9]+(/[a-z-]+)?' | sort -u | paste -sd ', ' -) || VIOLATION_CODES=""
+      ;;
+    yaml)
+      VIOLATION_CODES=$(echo "${RERUN_PHASE2_RAW}" | grep -oE '\([^)]+\)' | tr -d '()' | sort -u | paste -sd ', ' -) || VIOLATION_CODES=""
+      ;;
+    dockerfile)
+      # shellcheck disable=SC2016
+      VIOLATION_CODES=$(echo "${RERUN_PHASE2_RAW}" | jaq -r '[.[].code] | unique | join(", ")' 2>/dev/null) || VIOLATION_CODES=""
+      ;;
+    toml)
+      VIOLATION_CODES="TOML_SYNTAX"
+      ;;
+    typescript)
+      # shellcheck disable=SC2016
+      VIOLATION_CODES=$(echo "${RERUN_PHASE2_RAW}" | jaq -r '[(.diagnostics // [])[] | .category // empty] | unique | join(", ")' 2>/dev/null) || VIOLATION_CODES=""
+      ;;
+    *) ;;
+  esac
 }
 
 # ============================================================================
@@ -929,7 +983,7 @@ handle_typescript() {
       _handle_semgrep_session "${fp}"
       return
       ;;
-    *) echo "[hook:warning] unhandled ext in vue check: ${ext}" >&2 ;;
+    *) ;;
   esac
 
   # Biome required for non-SFC TS/JS/CSS files
@@ -1490,12 +1544,20 @@ fi
 
 # Verify: re-run Phase 1 + Phase 2
 rerun_phase1 "${file_path}" "${file_type}"
-remaining=$(rerun_phase2 "${file_path}" "${file_type}" | tail -1)
+rerun_phase2 "${file_path}" "${file_type}"
+remaining="${RERUN_PHASE2_COUNT}"
 
 if [[ "${remaining}" -eq 0 ]]; then
-  exit 0 # Fixed successfully
+  hook_json "Phase 3 resolved all violations."
+  exit 0
 else
-  echo "[hook:feedback-loop] delivered ${remaining} violations for ${file_path}" >&2
-  echo "[hook] ${remaining} violation(s) remain after delegation" >&2
+  extract_violation_codes "${file_type}"
+  _base_name=$(basename "${file_path}")
+  if [[ -n "${VIOLATION_CODES}" ]]; then
+    hook_json "${remaining} violation(s) in ${_base_name}: ${VIOLATION_CODES}. Fix them."
+  else
+    hook_json "${remaining} violation(s) in ${_base_name}. Fix them."
+  fi
+  echo "[hook:feedback-loop] delivered ${remaining} for ${file_path}" >&2
   exit 2
 fi

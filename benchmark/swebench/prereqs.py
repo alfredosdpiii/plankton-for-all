@@ -253,9 +253,13 @@ def check_tty_workaround(*, run_fn: Callable[..., Any] | None = None, **_kwargs:
             capture_output=True,
             text=True,
             check=False,
+            timeout=60,
             env=_clean_env(),
         )
-    proc = run_fn()
+    try:
+        proc = run_fn()
+    except subprocess.TimeoutExpired:
+        return PrereqResult(name="check_tty_workaround_live", passed=False, detail="timeout after 60s", step=6)
     if proc.returncode != 0:
         return PrereqResult(name="check_tty_workaround_live", passed=False, detail=f"exit {proc.returncode}", step=6)
     if not (proc.stdout or "").strip():
@@ -276,9 +280,13 @@ def check_large_stdin(*, run_fn: Callable[..., Any] | None = None, **_kwargs: An
             capture_output=True,
             text=True,
             check=False,
+            timeout=60,
             env=_clean_env(),
         )
-    proc = run_fn()
+    try:
+        proc = run_fn()
+    except subprocess.TimeoutExpired:
+        return PrereqResult(name="check_large_stdin_live", passed=False, detail="timeout after 60s", step=6)
     if not (proc.stdout or "").strip():
         return PrereqResult(name="check_large_stdin_live", passed=False, detail="empty stdout", step=6)
     return PrereqResult(name="check_large_stdin_live", passed=True, detail="large stdin ok", step=6)
@@ -302,9 +310,13 @@ def check_tool_blocklist_enforcement(*, run_fn: Callable[..., Any] | None = None
             capture_output=True,
             text=True,
             check=False,
+            timeout=60,
             env=_clean_env(),
         )
-    proc = run_fn()
+    try:
+        proc = run_fn()
+    except subprocess.TimeoutExpired:
+        return PrereqResult(name="check_tool_blocklist_live", passed=False, detail="timeout after 60s", step=9)
     stdout = proc.stdout or ""
     if "WebFetch" in stdout and "tool_use" in stdout:
         return PrereqResult(

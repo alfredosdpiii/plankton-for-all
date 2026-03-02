@@ -135,6 +135,7 @@ def run_task(  # noqa: PLR0913
     reset_fn: Callable[..., None] | None = None,
     inject_fn: Callable[..., None] | None = None,
     remove_fn: Callable[..., None] | None = None,
+    dry_run: bool = False,
 ) -> dict:
     """Run one task in both conditions. Returns summary dict."""
     from benchmark.swebench.agent import solve as _default_solve
@@ -161,7 +162,7 @@ def run_task(  # noqa: PLR0913
             do_inject(task_dir, plankton_root=plankton_root)
 
         try:
-            result = do_solve(task, condition=condition, model=model, timeout=timeout)
+            result = do_solve(task, condition=condition, model=model, timeout=timeout, dry_run=dry_run)
         except Exception as exc:  # noqa: BLE001
             import logging as _logging
 
@@ -203,6 +204,7 @@ def run_all(  # noqa: PLR0913
     plankton_root: Path = PLANKTON_ROOT,
     run_task_fn: Callable[..., dict[str, Any]] | None = None,
     completed_ids: set[str] | None = None,
+    dry_run: bool = False,
 ) -> dict:
     """Run all tasks. Returns {"aborted": bool, "tasks_completed": int, ...}."""
     # Safety check: CLAUDE.md must be backed up before benchmark runs
@@ -235,6 +237,7 @@ def run_all(  # noqa: PLR0913
                 results_dir=results_dir,
                 patches_dir=patches_dir,
                 plankton_root=plankton_root,
+                dry_run=dry_run,
             )
         except Exception:
             import logging

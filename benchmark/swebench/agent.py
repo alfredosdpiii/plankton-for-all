@@ -7,8 +7,9 @@ import json
 import os
 import shlex
 import shutil
-import subprocess
+import subprocess  # noqa: S404  # nosec B404
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
 GIT = shutil.which("git") or "git"
@@ -26,7 +27,7 @@ def _write_prompt_file(prompt: str, work_dir: Path) -> Path:
 def _extract_patch(repo_dir: Path, original_sha: str | None = None) -> str:
     """Run git diff against original_sha (or HEAD if not provided), return stdout."""
     diff_target = original_sha or "HEAD"
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603  # nosec B603
         [GIT, "diff", diff_target],
         cwd=repo_dir,
         capture_output=True,
@@ -50,6 +51,9 @@ def _parse_claude_output(result: subprocess.CompletedProcess, elapsed: float) ->
             cost = (parsed.get("usage") or {}).get("cost_usd")
         if cost is not None:
             metadata["cost_usd"] = cost
+        model = parsed.get("model")
+        if model is not None:
+            metadata["model_id"] = model
     if result.returncode not in {0, None} and "claude_output" not in metadata:
         metadata["error_type"] = "infra"
     if result.stderr:
@@ -57,12 +61,23 @@ def _parse_claude_output(result: subprocess.CompletedProcess, elapsed: float) ->
     return metadata
 
 
-def _build_cmd(condition: str, model: str, prompt_file: Path) -> list[str]:
+def _build_cmd(
+    condition: str,
+    model: str,
+    prompt_file: Path,
+    *,
+    settings: Path | None = None,
+) -> list[str]:
     """Build the full command for subprocess.run.
 
     Shape: ["script", "-q", "/dev/null", "sh", "-c", "cat {prompt_file} | {claude_cmd}"]
+
+    *settings* is an optional path to a Claude settings JSON file.  For
+    the baseline condition it is ignored (``BARE_SETTINGS`` is always used).
+    For plankton, when provided, ``--settings <path>`` is appended to the
+    command so that Claude Code loads the correct model/config.
     """
-    claude_args = [
+    claude_args: list[str] = [
         CLAUDE,
         "-p",
         "--dangerously-skip-permissions",
@@ -83,8 +98,10 @@ def _build_cmd(condition: str, model: str, prompt_file: Path) -> list[str]:
             "--strict-mcp-config",
             "--disable-slash-commands",
         ]
+    elif settings is not None:
+        claude_args.extend(["--settings", str(settings)])
 
-    claude_cmd = " ".join(str(a) for a in claude_args)
+    claude_cmd = " ".join(shlex.quote(str(a)) for a in claude_args)
     shell_cmd = f"cat {shlex.quote(str(prompt_file))} | {claude_cmd}"
     return ["script", "-q", "/dev/null", "sh", "-c", shell_cmd]
 
@@ -95,12 +112,20 @@ _VALID_CONDITIONS = {"baseline", "plankton"}
 _DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 
 
+@dataclass(frozen=True)
+class SolveConfig:
+    """Configuration options for the solve function."""
+
+    condition: str = "plankton"
+    model: str | None = None
+    timeout: int = 1800
+    dry_run: bool = False
+    settings: Path | None = field(default=None)
+
+
 def solve(
     input_data: dict,
-    *,
-    condition: str = "plankton",
-    model: str | None = None,
-    timeout: int = 1800,
+    config: SolveConfig | None = None,
     **_kwargs,
 ) -> dict:
     """HAL-compatible solve function.
@@ -110,38 +135,54 @@ def solve(
 
     ``passed`` is always None here — it is populated by the evaluation harness
     after the benchmark run completes.
+
+    When *dry_run* is True the claude subprocess is not invoked; the function
+    returns immediately with an empty patch and ``dry_run=True`` in metadata.
+
+    *settings* is forwarded to ``_build_cmd`` — an optional Claude settings
+    JSON file path used by the plankton condition for GLM model routing.
     """
-    if condition not in _VALID_CONDITIONS:
-        msg = f"invalid condition: {condition!r}, must be one of {_VALID_CONDITIONS}"
+    cfg = config or SolveConfig()
+    if cfg.condition not in _VALID_CONDITIONS:
+        msg = f"invalid condition: {cfg.condition!r}, must be one of {_VALID_CONDITIONS}"
         raise ValueError(msg)
 
-    resolved_model = model or os.environ.get("SWEBENCH_MODEL") or _DEFAULT_MODEL
-
+    resolved_model = cfg.model or os.environ.get("SWEBENCH_MODEL") or _DEFAULT_MODEL
     repo_dir = Path(input_data["repo_dir"])
 
     # Capture original HEAD so _extract_patch diffs against it even if claude commits
-    sha_result = subprocess.run(
-        [GIT, "rev-parse", "HEAD"],
-        cwd=repo_dir,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    original_sha = sha_result.stdout.strip() or None
+    original_sha: str | None = None
+    if not cfg.dry_run:
+        sha_result = subprocess.run(  # noqa: S603  # nosec B603
+            [GIT, "rev-parse", "HEAD"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        original_sha = sha_result.stdout.strip() or None
 
     prompt_file = _write_prompt_file(input_data["problem_statement"], repo_dir)
-    cmd = _build_cmd(condition, resolved_model, prompt_file)
+    cmd = _build_cmd(cfg.condition, resolved_model, prompt_file, settings=cfg.settings)
+
+    if cfg.dry_run:
+        return {
+            "patch": "",
+            "condition": cfg.condition,
+            "passed": None,
+            "metadata": {"dry_run": True, "cmd": cmd, "model_requested": resolved_model},
+        }
 
     env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
 
     start = time.time()
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603  # nosec B603
             cmd,
             cwd=repo_dir,
             capture_output=True,
             text=True,
-            timeout=timeout,
+            timeout=cfg.timeout,
             check=False,
             env=env,
         )
@@ -153,7 +194,8 @@ def solve(
         metadata = {"error": "timeout", "error_type": "infra", "elapsed_s": round(elapsed, 1)}
         patch = ""
 
-    return {"patch": patch, "condition": condition, "passed": None, "metadata": metadata}
+    metadata["model_requested"] = resolved_model
+    return {"patch": patch, "condition": cfg.condition, "passed": None, "metadata": metadata}
 
 
 def _build_parser() -> argparse.ArgumentParser:
