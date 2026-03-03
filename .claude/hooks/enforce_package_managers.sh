@@ -292,7 +292,7 @@ compute_segment_replacement() {
     "python -m pip":*)      echo "uv add <packages>" ;;
     "python -m venv":*)
       local venv_dir
-      venv_dir=$(echo "${segment}" | sed -nE 's/.*python3?[[:space:]]+-m[[:space:]]+venv[[:space:]]+([^[:space:]]+).*//\1/p')
+      venv_dir=$(echo "${segment}" | sed -nE 's/.*python3?[[:space:]]+-m[[:space:]]+venv[[:space:]]+([^[:space:]]+).*/\1/p')
       if [[ -n "${venv_dir}" ]]; then
         echo "uv venv ${venv_dir}"
       else
@@ -350,7 +350,7 @@ compute_segment_replacement() {
       ;;
     npm:run)
       local script
-      script=$(echo "${segment}" | sed -nE 's/.*npm[[:space:]]+run[[:space:]]+([^[:space:]]+).*//\1/p')
+      script=$(echo "${segment}" | sed -nE 's/.*npm[[:space:]]+run[[:space:]]+([^[:space:]]+).*/\1/p')
       if [[ -n "${script}" ]]; then
         echo "bun run ${script}"
       else
@@ -393,7 +393,7 @@ compute_segment_replacement() {
     yarn:install)     echo "bun install" ;;
     yarn:run)
       local script
-      script=$(echo "${segment}" | sed -nE 's/.*yarn[[:space:]]+run[[:space:]]+([^[:space:]]+).*//\1/p')
+      script=$(echo "${segment}" | sed -nE 's/.*yarn[[:space:]]+run[[:space:]]+([^[:space:]]+).*/\1/p')
       if [[ -n "${script}" ]]; then
         echo "bun run ${script}"
       else
@@ -422,7 +422,7 @@ compute_segment_replacement() {
     pnpm:install)     echo "bun install" ;;
     pnpm:run)
       local script
-      script=$(echo "${segment}" | sed -nE 's/.*pnpm[[:space:]]+run[[:space:]]+([^[:space:]]+).*//\1/p')
+      script=$(echo "${segment}" | sed -nE 's/.*pnpm[[:space:]]+run[[:space:]]+([^[:space:]]+).*/\1/p')
       if [[ -n "${script}" ]]; then
         echo "bun run ${script}"
       else
@@ -669,7 +669,8 @@ if [[ "${py_mode}" != "off" && "${cmd}" =~ ${WB_START}uv[[:space:]]+pip ]]; then
 fi
 
 # Phase 1: Scan for ALL blocked PMs across entire compound command
-scan_compound_command && scan_result=0 || scan_result=$?
+# shellcheck disable=SC2310  # intentional: capture exit code under set -e
+  scan_compound_command && scan_result=0 || scan_result=$?
 if [[ "${HOOK_DEBUG_PM:-0}" == "1" ]]; then
   echo "[hook:debug] scan_result=${scan_result}, BLOCKED_PMS count=${#BLOCKED_PMS[@]}" >&2
 fi

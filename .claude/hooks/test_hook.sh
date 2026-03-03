@@ -109,7 +109,7 @@ run_self_test() {
     local mock_dir="$2"
     mkdir -p "${mock_dir}"
     local t t_path
-    for t in jaq grep sed tr head cat touch bash; do
+    for t in jaq grep sed tr head cat touch bash awk; do
       [[ "${t}" == "${exclude_tool}" ]] && continue
       t_path=$(command -v "${t}" 2>/dev/null || true)
       if [[ -n "${t_path}" ]]; then

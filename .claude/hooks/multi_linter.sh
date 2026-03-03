@@ -268,7 +268,7 @@ file_type=""
 # Note: HOOK_SUBPROCESS_TIMEOUT env var is handled inside load_model_patterns
 
 # Extract file path from tool_input
-file_path=$(jaq -r '.tool_input?.file_path? // empty' <<<"${input}" 2>/dev/null) || file_path=""
+file_path=$(jaq -r '.tool_input?.file_path? // .tool_input?.notebook_path? // empty' <<<"${input}" 2>/dev/null) || file_path=""
 
 # Skip if no file path or file doesn't exist
 [[ -z "${file_path}" ]] && exit_json
@@ -309,9 +309,17 @@ spawn_fix_subprocess() {
   local violations_json="$2"
   local ftype="$3"
 
+  # Filter violations for docstring-specialized branch (BUG-7 fix)
+  # If Python file has real D### docstring codes, narrow to D-only subset.
+  # Non-D violations are handled by the rerun loop after docstrings are fixed.
+  local prompt_violations_json="${violations_json}"
+  if [[ "${ftype}" == "python" ]] && echo "${violations_json}" | jaq -e '[.[] | select(.code | test("^D[0-9]+$"))] | length > 0' >/dev/null 2>&1; then
+    prompt_violations_json=$(echo "${violations_json}" | jaq -c '[.[] | select(.code | test("^D[0-9]+$"))]' 2>/dev/null) || prompt_violations_json="${violations_json}"
+  fi
+
   # Model selection based on violation complexity
   local count
-  count=$(echo "${violations_json}" | jaq 'length' 2>/dev/null | head -n1 || echo "0")
+  count=$(echo "${prompt_violations_json}" | jaq 'length' 2>/dev/null | head -n1 || echo "0")
 
   local model=""
   local tier_max_turns=""
@@ -324,13 +332,13 @@ spawn_fix_subprocess() {
   else
     # Check for opus-level codes
     local has_opus_codes="false"
-    if echo "${violations_json}" | jaq -e '[.[] | select(.code | test("'"${OPUS_CODE_PATTERN}"'"))] | length > 0' >/dev/null 2>&1; then
+    if echo "${prompt_violations_json}" | jaq -e '[.[] | select(.code | test("'"${OPUS_CODE_PATTERN}"'"))] | length > 0' >/dev/null 2>&1; then
       has_opus_codes="true"
     fi
 
     # Check for sonnet-level codes
     local has_sonnet_codes="false"
-    if echo "${violations_json}" | jaq -e '[.[] | select(.code | test("'"${SONNET_CODE_PATTERN}"'"))] | length > 0' >/dev/null 2>&1; then
+    if echo "${prompt_violations_json}" | jaq -e '[.[] | select(.code | test("'"${SONNET_CODE_PATTERN}"'"))] | length > 0' >/dev/null 2>&1; then
       has_sonnet_codes="true"
     fi
 
@@ -347,7 +355,7 @@ spawn_fix_subprocess() {
   # Warn about violation codes that don't match any tier pattern
   if [[ "${model}" == "haiku" ]] && [[ -z "${GLOBAL_MODEL_OVERRIDE}" ]]; then
     local unmatched_codes
-    unmatched_codes=$(echo "${violations_json}" | jaq -r '.[].code' 2>/dev/null | sort -u) || true
+    unmatched_codes=$(echo "${prompt_violations_json}" | jaq -r '.[].code' 2>/dev/null | sort -u) || true
     while IFS= read -r code; do
       [[ -z "${code}" ]] && continue
       local matched="false"
@@ -388,23 +396,6 @@ spawn_fix_subprocess() {
     echo "[hook:model] ${model} (count=${count}, opus_codes=${has_opus_codes:-n/a}, sonnet_codes=${has_sonnet_codes:-n/a})" >&2
   fi
 
-  # Determine post-fix formatter command
-  local format_cmd=""
-  case "${ftype}" in
-    python) format_cmd="ruff format '${fp}'" ;;
-    shell) format_cmd="shfmt -w -i 2 -ci -bn '${fp}'" ;;
-    toml) format_cmd="RUST_LOG=error taplo fmt '${fp}'" ;;
-    markdown) format_cmd="markdownlint-cli2 --no-globs --fix '${fp}'" ;;
-    typescript)
-      local _biome_cmd
-      _biome_cmd=$(detect_biome 2>/dev/null) || _biome_cmd=""
-      if [[ -n "${_biome_cmd}" ]]; then
-        format_cmd="${_biome_cmd} format --write '${fp}'"
-      fi
-      ;;
-    *) format_cmd="" ;;
-  esac
-
   # Build prompt for subprocess (file-type specific for better fixes)
   local prompt
   if [[ "${ftype}" == "markdown" ]]; then
@@ -412,7 +403,7 @@ spawn_fix_subprocess() {
     prompt="You are a markdown fixer. Fix ALL violations in ${fp}.
 
 VIOLATIONS:
-${violations_json}
+${prompt_violations_json}
 
 MARKDOWN FIX STRATEGIES:
 - MD013 (line length >80): SHORTEN content, don't wrap. Examples:
@@ -427,11 +418,11 @@ MARKDOWN FIX STRATEGIES:
 RULES:
 1. Use targeted Edit operations - fix specific lines, never rewrite entire file
 2. For tables: edit the ENTIRE row in one Edit to keep columns consistent
-3. Run: ${format_cmd}
-4. Verify with: markdownlint-cli2 --no-globs '${fp}'
+3. The hook pipeline will auto-format and re-run validation after your edits
+
 
 Be concise. No explanations in the file."
-  elif [[ "${ftype}" == "python" ]] && echo "${violations_json}" | jaq -e '[.[] | select(.code | startswith("D"))] | length > 0' >/dev/null 2>&1; then
+  elif [[ "${ftype}" == "python" ]] && echo "${prompt_violations_json}" | jaq -e '[.[] | select(.code | test("^D[0-9]+$"))] | length > 0' >/dev/null 2>&1; then
     # Python with docstring violations - specialized prompt
     # __init__.py-specific D100 hint (conditional)
     local init_hint=""
@@ -441,7 +432,7 @@ Be concise. No explanations in the file."
     prompt="You are a docstring fixer. Fix ALL docstring violations in ${fp}.
 
 VIOLATIONS:
-${violations_json}
+${prompt_violations_json}
 
 DOCSTRING FIX STRATEGIES:
 - D401 (imperative mood): Change 'Returns the value' -> 'Return the value', 'Gets data' -> 'Get data'
@@ -456,8 +447,8 @@ RULES:
 1. Use targeted Edit operations - fix specific docstrings, never rewrite entire file
 2. Preserve existing docstring content, only fix the specific violation
 3. Follow Google docstring style (Args:, Returns:, Raises:)
-4. After fixing, run: ${format_cmd}
-5. Verify with: ruff check --select=D '${fp}'
+4. The hook pipeline will auto-format and re-run validation after your edits
+
 
 Be concise. Fix docstrings only, do not refactor code."
   else
@@ -465,14 +456,14 @@ Be concise. Fix docstrings only, do not refactor code."
     prompt="You are a code quality fixer. Fix ALL violations listed below in ${fp}.
 
 VIOLATIONS:
-${violations_json}
+${prompt_violations_json}
 
 RULES:
 1. Use targeted Edit operations only - never rewrite the entire file
 2. Fix each violation at its reported line/column
-3. After fixing, run the formatter: ${format_cmd}
-4. Verify by re-running the linter
-5. If a violation cannot be fixed, explain why
+3. The hook pipeline will auto-format and re-run validation after your edits
+
+4. If a violation cannot be fixed, explain why
 
 Do not add comments explaining fixes. Do not refactor beyond what's needed."
   fi
