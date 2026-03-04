@@ -53,6 +53,19 @@ hook_json() {
 # shellcheck disable=SC2329  # invoked indirectly
 exit_json() { hook_json "${1:-}"; exit 0; }
 
+# Emit structured timing diagnostics to stderr and, optionally, to a file.
+# Never writes to stdout. Fail-open by design.
+hook_diag() {
+  local line="[hook:timing] t=${SECONDS} $*"
+  printf '%s\n' "${line}" >&2
+  if [[ -n "${HOOK_TIMING_LOG_FILE:-}" ]]; then
+    local _log_dir
+    _log_dir=$(dirname "${HOOK_TIMING_LOG_FILE}")
+    mkdir -p "${_log_dir}" 2>/dev/null || true
+    printf '%s\n' "${line}" >>"${HOOK_TIMING_LOG_FILE}" 2>/dev/null || true
+  fi
+}
+
 # Fail-open if jaq is not installed (required for JSON parsing)
 if ! command -v jaq >/dev/null 2>&1; then
   echo "[hook] error: jaq is required but not found. Install: brew install jaq" >&2
@@ -255,6 +268,8 @@ load_model_patterns
 
 # Read JSON input from stdin
 input=$(cat)
+tool_name=$(jaq -r '.tool_name // empty' <<<"${input}" 2>/dev/null) || tool_name=""
+[[ -z "${tool_name}" ]] && tool_name="unknown"
 
 # Track if any issues found
 has_issues=false
@@ -317,9 +332,14 @@ spawn_fix_subprocess() {
     prompt_violations_json=$(echo "${violations_json}" | jaq -c '[.[] | select(.code | test("^D[0-9]+$"))]' 2>/dev/null) || prompt_violations_json="${violations_json}"
   fi
 
+  # Compute prompt-side count and codes once (used for logs and model selection)
+  local prompt_count prompt_codes
+  prompt_count=$(echo "${prompt_violations_json}" | jaq 'length' 2>/dev/null | head -n1 || echo "0")
+  prompt_codes=$(echo "${prompt_violations_json}" | jaq -r '[.[].code] | sort | unique | join(",")' 2>/dev/null || echo "")
+  hook_diag "phase=delegate_plan tool=${tool_name} file=${fp} ftype=${ftype} count=${prompt_count} codes=${prompt_codes}"
+
   # Model selection based on violation complexity
-  local count
-  count=$(echo "${prompt_violations_json}" | jaq 'length' 2>/dev/null | head -n1 || echo "0")
+  local count="${prompt_count}"
 
   local model=""
   local tier_max_turns=""
@@ -574,6 +594,8 @@ SETTINGS_EOF
   if [[ -n "${disallowed_tools}" ]]; then
     disallowed_flag=(--disallowedTools "${disallowed_tools}")
   fi
+  local delegate_started=${SECONDS}
+  hook_diag "phase=delegate_start tool=${tool_name} file=${fp} ftype=${ftype} model=${model} max_turns=${tier_max_turns} timeout=${effective_timeout} allowed_tools=${allowed_tools} count=${prompt_count} codes=${prompt_codes}"
   subprocess_exit=0
   ${timeout_cmd} env -u CLAUDECODE "${claude_cmd}" -p "${prompt}" \
     --dangerously-skip-permissions \
@@ -594,6 +616,10 @@ SETTINGS_EOF
   else
     echo "[hook:subprocess] file unchanged" >&2
   fi
+  local delegate_duration=$(( SECONDS - delegate_started ))
+  local _changed="no"
+  [[ "${file_hash_before}" != "${file_hash_after}" ]] && _changed="yes"
+  hook_diag "phase=delegate_end tool=${tool_name} file=${fp} ftype=${ftype} model=${model} exit=${subprocess_exit} changed=${_changed} duration_s=${delegate_duration}"
 
   # Report subprocess failures (but don't fail the hook)
   if [[ "${subprocess_exit}" -ne 0 ]]; then
@@ -1540,15 +1566,21 @@ fi
 # Calculate model selection for debugging/testing
 # This runs before HOOK_SKIP_SUBPROCESS check so tests can verify model selection
 if [[ "${HOOK_DEBUG_MODEL:-}" == "1" ]]; then
-  count=$(echo "${collected_violations}" | jaq 'length' 2>/dev/null | head -n1 || echo "0")
+  # Align with real delegation: filter to D-only subset for Python docstring cases
+  debug_violations_json="${collected_violations}"
+  if [[ "${file_type}" == "python" ]] && echo "${collected_violations}" | jaq -e '[.[] | select(.code | test("^D[0-9]+$"))] | length > 0' >/dev/null 2>&1; then
+    debug_violations_json=$(echo "${collected_violations}" | jaq -c '[.[] | select(.code | test("^D[0-9]+$"))]' 2>/dev/null) || debug_violations_json="${collected_violations}"
+  fi
+
+  count=$(echo "${debug_violations_json}" | jaq 'length' 2>/dev/null | head -n1 || echo "0")
 
   debug_has_opus_codes="false"
-  if echo "${collected_violations}" | jaq -e '[.[] | select(.code | test("'"${OPUS_CODE_PATTERN}"'"))] | length > 0' >/dev/null 2>&1; then
+  if echo "${debug_violations_json}" | jaq -e '[.[] | select(.code | test("'"${OPUS_CODE_PATTERN}"'"))] | length > 0' >/dev/null 2>&1; then
     debug_has_opus_codes="true"
   fi
 
   debug_has_sonnet_codes="false"
-  if echo "${collected_violations}" | jaq -e '[.[] | select(.code | test("'"${SONNET_CODE_PATTERN}"'"))] | length > 0' >/dev/null 2>&1; then
+  if echo "${debug_violations_json}" | jaq -e '[.[] | select(.code | test("'"${SONNET_CODE_PATTERN}"'"))] | length > 0' >/dev/null 2>&1; then
     debug_has_sonnet_codes="true"
   fi
 
@@ -1580,11 +1612,25 @@ if is_subprocess_enabled && [[ -z "${HOOK_SKIP_SUBPROCESS:-}" ]]; then
 fi
 
 # Verify: re-run Phase 1 + Phase 2
+_verify_started=${SECONDS}
+hook_diag "phase=verify_start tool=${tool_name} file=${file_path} ftype=${file_type}"
+
+_p1_started=${SECONDS}
+hook_diag "phase=rerun_phase1_start tool=${tool_name} file=${file_path} ftype=${file_type}"
 rerun_phase1 "${file_path}" "${file_type}"
+hook_diag "phase=rerun_phase1_end tool=${tool_name} file=${file_path} ftype=${file_type} duration_s=$(( SECONDS - _p1_started ))"
+
+_p2_started=${SECONDS}
+hook_diag "phase=rerun_phase2_start tool=${tool_name} file=${file_path} ftype=${file_type}"
 rerun_phase2 "${file_path}" "${file_type}"
+_remaining_codes=$(echo "${RERUN_PHASE2_RAW:-[]}" | jaq -r '[.[].code] | sort | unique | join(",")' 2>/dev/null || echo "")
+hook_diag "phase=rerun_phase2_end tool=${tool_name} file=${file_path} ftype=${file_type} duration_s=$(( SECONDS - _p2_started )) remaining_count=${RERUN_PHASE2_COUNT} remaining_codes=${_remaining_codes}"
+
 remaining="${RERUN_PHASE2_COUNT}"
+hook_diag "phase=verify_end tool=${tool_name} file=${file_path} ftype=${file_type} remaining_count=${remaining} remaining_codes=${_remaining_codes} duration_s=$(( SECONDS - _verify_started ))"
 
 if [[ "${remaining}" -eq 0 ]]; then
+  hook_diag "phase=resolved tool=${tool_name} file=${file_path} ftype=${file_type} remaining=0"
   exit_json "Phase 3 resolved all violations."
 else
   extract_violation_codes "${file_type}"
@@ -1594,6 +1640,7 @@ else
   else
     hook_json "${remaining} violation(s) in ${_base_name}. Fix them."
   fi
+  hook_diag "phase=feedback_loop tool=${tool_name} file=${file_path} ftype=${file_type} remaining_count=${remaining} remaining_codes=${VIOLATION_CODES:-}"
   echo "[hook:feedback-loop] delivered ${remaining} for ${file_path}" >&2
   exit 2
 fi

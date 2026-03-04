@@ -357,6 +357,42 @@ assert "t7h_model_sonnet" \
   "mixed D+F violations select sonnet model" \
   "mixed D+F violations did NOT select sonnet"
 
+# ============================================================================
+# Test 7i: HOOK_DEBUG_MODEL uses D-only subset for Python docstring mix
+# ============================================================================
+printf "\n--- test7i: HOOK_DEBUG_MODEL uses D-filtered model for mixed D+opus ---\n"
+
+# D103 + unresolved-attribute (opus-level code)
+# Unfiltered: opus (unresolved-attribute in OPUS_PATTERN)
+# D-only filtered: sonnet (D103 in SONNET_PATTERN)
+MIXED_D_OPUS_JSON='[{"code":"D103","message":"Missing docstring","filename":"test.py","location":{"row":4,"column":1},"end_location":{"row":4,"column":10},"fix":null,"url":""},{"code":"unresolved-attribute","message":"Cannot access attribute","filename":"test.py","location":{"row":5,"column":1},"end_location":{"row":5,"column":10},"fix":null,"url":""}]'
+
+t7i_dir="${tmp_dir}/t7i"
+setup_project_dir "${t7i_dir}/project" "${TIER_CONFIG}"
+create_mock_claude "${t7i_dir}/bin" "${t7i_dir}/prompt.txt" "${t7i_dir}/args.txt"
+
+printf 'import os\ndef hello():\n    pass\n' >"${t7i_dir}/test_file.py"
+
+t7i_json='{"tool_input":{"file_path":"'"${t7i_dir}/test_file.py"'"}}'
+
+echo "${t7i_json}" \
+  | PATH="${t7i_dir}/bin:${mock_bin}:${PATH}" \
+    CLAUDE_PROJECT_DIR="${t7i_dir}/project" \
+    HOOK_SESSION_PID="t7i_$$" \
+    MOCK_RUFF_JSON="${MIXED_D_OPUS_JSON}" \
+    HOOK_DEBUG_MODEL="1" \
+    bash "${hook_dir}/multi_linter.sh" >/dev/null 2>"${t7i_dir}/stderr.txt" || true
+
+assert "t7i_model_sonnet" \
+  "grep -q '\[hook:model\] sonnet' '${t7i_dir}/stderr.txt' 2>/dev/null" \
+  "[hook:model] says sonnet for D103+opus-code (filtered to D-only)" \
+  "[hook:model] does NOT say sonnet after D-filtering"
+
+assert "t7i_not_opus" \
+  "! grep -q '\[hook:model\] opus' '${t7i_dir}/stderr.txt' 2>/dev/null" \
+  "[hook:model] does NOT say opus (unresolved-attribute filtered out)" \
+  "[hook:model] incorrectly says opus (unfiltered set used)"
+
 # === Summary ===
 printf "\n=== Summary ===\n"
 printf "Passed: %d\nFailed: %d\n" "${passed}" "${failed}"
