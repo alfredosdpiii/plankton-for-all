@@ -72,13 +72,6 @@ repos:
     hooks:
       - id: actionlint
 
-  # === PHASE 9: MARKDOWN (pinned via npm) ===
-  - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.21.0
-    hooks:
-      - id: markdownlint-cli2
-        pass_filenames: false
-
   - repo: local
     hooks:
       # === PHASE 5: YAML ===
@@ -121,6 +114,8 @@ repos:
 
 # === INTENTIONAL EXCLUSIONS ===
 # The following tools run in CC hooks and/or CI but NOT in pre-commit:
+# - markdownlint-cli2: pass_filenames=false causes it to scan gitignored docs/plans/
+#   (auto-generated reports that don't conform to style rules); removed to reduce noise
 # - vulture: High false positive rate, advisory-only (needs whitelist)
 # - bandit: Security scanning belongs in CI gates, not commit-time
 # - flake8-pydantic: Niche Pydantic feedback, real-time via CC hooks

@@ -326,6 +326,37 @@ assert "t7e_generic_prompt" \
   "DL3000 uses generic code quality fixer prompt" \
   "DL3000 does NOT use generic prompt"
 
+# ============================================================================
+# Test 7h: HOOK_DEBUG_MODEL shows filtered D-only count
+# ============================================================================
+printf "\n--- test7h: HOOK_DEBUG_MODEL captures filtered subset ---\n"
+
+t7h_dir="${tmp_dir}/t7h"
+setup_project_dir "${t7h_dir}/project" "${TIER_CONFIG}"
+create_mock_claude "${t7h_dir}/bin" "${t7h_dir}/prompt.txt" "${t7h_dir}/args.txt"
+
+printf 'import os\ndef hello():\n    pass\n' >"${t7h_dir}/test_file.py"
+
+t7h_json='{"tool_input":{"file_path":"'"${t7h_dir}/test_file.py"'"}}'
+
+echo "${t7h_json}" \
+  | PATH="${t7h_dir}/bin:${mock_bin}:${PATH}" \
+    CLAUDE_PROJECT_DIR="${t7h_dir}/project" \
+    HOOK_SESSION_PID="t7h_$$" \
+    MOCK_RUFF_JSON="${MIXED_D_F_JSON}" \
+    HOOK_DEBUG_MODEL="1" \
+    bash "${hook_dir}/multi_linter.sh" >/dev/null 2>"${t7h_dir}/stderr.txt" || true
+
+assert "t7h_filtered_count" \
+  "grep -q 'count=1' '${t7h_dir}/stderr.txt' 2>/dev/null" \
+  "subprocess model uses filtered D-only count (1, not 2)" \
+  "subprocess model does NOT show filtered count"
+
+assert "t7h_model_sonnet" \
+  "grep -q 'sonnet' '${t7h_dir}/stderr.txt' 2>/dev/null" \
+  "mixed D+F violations select sonnet model" \
+  "mixed D+F violations did NOT select sonnet"
+
 # === Summary ===
 printf "\n=== Summary ===\n"
 printf "Passed: %d\nFailed: %d\n" "${passed}" "${failed}"

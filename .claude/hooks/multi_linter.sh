@@ -1122,6 +1122,7 @@ case "${file_path}" in
   *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.mts|*.cts|*.css) file_type="typescript" ;;
   *.vue|*.svelte|*.astro) file_type="typescript" ;;
   Dockerfile | Dockerfile.* | */Dockerfile | */Dockerfile.* | *.dockerfile | *.Dockerfile) file_type="dockerfile" ;;
+  *.ipynb) exit_json ;;  # Notebook — no cell-level linting
   *) exit_json ;; # Unsupported
 esac
 
