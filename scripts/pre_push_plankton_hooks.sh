@@ -19,4 +19,4 @@ for test_script in .claude/hooks/test/*.sh; do
 done
 
 bash .claude/hooks/test_hook.sh --self-test
-uv run pytest benchmark/tests/integration/test_hooks_robustness.py -q
+uv run pytest tests/integration/test_hooks_robustness.py -q

@@ -142,7 +142,14 @@ def solve(
     *settings* is forwarded to ``_build_cmd`` — an optional Claude settings
     JSON file path used by the plankton condition for GLM model routing.
     """
-    cfg = config or SolveConfig()
+    base_cfg = config or SolveConfig()
+    cfg = SolveConfig(
+        condition=_kwargs.pop("condition", base_cfg.condition),
+        model=_kwargs.pop("model", base_cfg.model),
+        timeout=_kwargs.pop("timeout", base_cfg.timeout),
+        dry_run=_kwargs.pop("dry_run", base_cfg.dry_run),
+        settings=_kwargs.pop("settings", base_cfg.settings),
+    )
     if cfg.condition not in _VALID_CONDITIONS:
         msg = f"invalid condition: {cfg.condition!r}, must be one of {_VALID_CONDITIONS}"
         raise ValueError(msg)

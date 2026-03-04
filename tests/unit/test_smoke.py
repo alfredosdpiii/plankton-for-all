@@ -1,3 +1,8 @@
-"""Compatibility wrapper for benchmark.tests.unit.test_smoke."""
+"""Smoke test to verify test infrastructure works."""
 
-from benchmark.tests.unit.test_smoke import *  # noqa: F401,F403
+
+def test_import_plankton():
+    """Verify the plankton package is importable."""
+    import src  # noqa: F811
+
+    assert hasattr(src, "__doc__")

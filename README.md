@@ -40,10 +40,10 @@ command, no plugin, no config. Clone, setup, claude.
 <!-- -->
 
 > [!NOTE]
-> **Existing codebases:** the agent edits a file, Plankton enforces every
-> violation in it, pre-existing included. Messy files get cleaned up on first
-> touch. After that, they're fast. Scope down Python security scanners if
-> needed:
+> **Existing codebases:** when the agent edits a file, Plankton runs the
+> configured checks for that file, including pre-existing issues. Some issues
+> are auto-fixed on first touch; unresolved ones come back as feedback. Scope
+> down only the Python security scanners here if needed:
 >
 > ```json
 > "security_linter_exclusions": [".venv/", "vendor/", "node_modules/"]
