@@ -123,17 +123,20 @@ For the full motivation and design story, read the
 ## verify
 
 ```bash
-# Install pre-commit hooks (optional but recommended)
-uv run pre-commit install
+# Install pre-commit hooks (recommended). This makes the strict
+# runtime-parity gate run automatically on git commit and enables the
+# commit-message policy hook.
+uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
 
-# Optional: run a stricter local gate through pre-commit that reuses
-# Plankton's runtime file checks (deterministic only; Claude subprocess
-# delegation is intentionally disabled)
+# Manually re-run the same strict gate on currently staged files
 make strict
 
-# Use PLANKTON_STRICT_ALLOW_PROTECTED=1 only when intentionally changing
-# protected linter or hook config files.
+# For intentional protected config edits, use the protected override for
+# the manual check:
 make strict-protected FILES=".semgrep.yml"
+
+# ...or for an actual commit:
+PLANKTON_STRICT_ALLOW_PROTECTED=1 git commit
 
 # Run the hook self-test suite
 .claude/hooks/test_hook.sh --self-test

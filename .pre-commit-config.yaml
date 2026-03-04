@@ -1,5 +1,5 @@
 # Pre-commit hooks for code quality enforcement
-# Install: uv add --dev pre-commit && uv run pre-commit install
+# Install: uv add --dev pre-commit && uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
 # Pre-push: uv run pre-commit install --hook-type pre-push
 # Run: uv run pre-commit run --all-files
 
@@ -112,13 +112,28 @@ repos:
         stages: [pre-commit]
         verbose: true
 
-      # === OPTIONAL: RUNTIME-PARITY STRICT CHECKS (manual only) ===
+      # === RUNTIME-PARITY STRICT CHECKS (automatic on commit) ===
+      - id: plankton-strict-runtime-commit
+        name: plankton (strict runtime parity)
+        entry: ./scripts/pre_commit_plankton_strict.sh
+        language: system
+        require_serial: true
+        stages: [pre-commit]
+
+      # === RUNTIME-PARITY STRICT CHECKS (manual re-run / explicit override) ===
       - id: plankton-strict-runtime
         name: plankton (strict runtime parity)
         entry: ./scripts/pre_commit_plankton_strict.sh
         language: system
         require_serial: true
         stages: [manual]
+
+      # === COMMIT MESSAGE POLICY ===
+      - id: plankton-commit-msg
+        name: plankton (commit message policy)
+        entry: ./scripts/check_commit_message_no_ai_attribution.sh
+        language: system
+        stages: [commit-msg]
 
 # === INTENTIONAL EXCLUSIONS ===
 # The following tools run in CC hooks and/or CI but NOT in pre-commit:
