@@ -236,7 +236,7 @@ detect_biome() {
       npm) biome_cmd="npx biome" ;;
       pnpm) biome_cmd="pnpm exec biome" ;;
       bun) biome_cmd="bunx biome" ;;
-      *) echo "[hook:warning] unknown js_runtime: ${js_runtime}" >&2 ;;
+      *) ;;
     esac
   else
     # Auto-detect: project-local -> PATH -> npx -> pnpm -> bunx
@@ -698,10 +698,12 @@ rerun_phase1() {
         local _unsafe
         _unsafe=$(get_ts_config "biome_unsafe_autofix" "false")
         [[ "${_unsafe}" == "true" ]] && _unsafe_flag="--unsafe"
+        local rel_path
+        rel_path=$(_biome_relpath "${fp}")
         if [[ -n "${_unsafe_flag}" ]]; then
-          (cd "${CLAUDE_PROJECT_DIR:-.}" && ${_biome_cmd} check --write "${_unsafe_flag}" "$(_biome_relpath "${fp}")") >/dev/null 2>&1 || true
+          (cd "${CLAUDE_PROJECT_DIR:-.}" && ${_biome_cmd} check --write "${_unsafe_flag}" "${rel_path}") >/dev/null 2>&1 || true
         else
-          (cd "${CLAUDE_PROJECT_DIR:-.}" && ${_biome_cmd} check --write "$(_biome_relpath "${fp}")") >/dev/null 2>&1 || true
+          (cd "${CLAUDE_PROJECT_DIR:-.}" && ${_biome_cmd} check --write "${rel_path}") >/dev/null 2>&1 || true
         fi
       fi
       ;;
@@ -858,7 +860,9 @@ rerun_phase2() {
       _biome_cmd=$(detect_biome 2>/dev/null) || _biome_cmd=""
       if [[ -n "${_biome_cmd}" ]]; then
         local biome_out
-        biome_out=$( (cd "${CLAUDE_PROJECT_DIR:-.}" && ${_biome_cmd} lint --reporter=json "$(_biome_relpath "${fp}")") 2>/dev/null || true)
+        local rel_path
+        rel_path=$(_biome_relpath "${fp}")
+        biome_out=$( (cd "${CLAUDE_PROJECT_DIR:-.}" && ${_biome_cmd} lint --reporter=json "${rel_path}") 2>/dev/null || true)
         if [[ -n "${biome_out}" ]]; then
           count=$(echo "${biome_out}" | jaq '[(.diagnostics // [])[] |
             select(.severity == "error" or .severity == "warning")] | length' 2>/dev/null | head -n1 || echo "0")
@@ -1070,26 +1074,29 @@ handle_typescript() {
   if is_auto_format_enabled; then
     local unsafe_config
     unsafe_config=$(get_ts_config "biome_unsafe_autofix" "false")
+    local rel_path
+    rel_path=$(_biome_relpath "${fp}")
     if [[ "${unsafe_config}" == "true" ]]; then
-      (cd "${CLAUDE_PROJECT_DIR:-.}" && ${biome_cmd} check --write --unsafe "$(_biome_relpath "${fp}")") >/dev/null 2>&1 || true
+      (cd "${CLAUDE_PROJECT_DIR:-.}" && ${biome_cmd} check --write --unsafe "${rel_path}") >/dev/null 2>&1 || true
     else
-      (cd "${CLAUDE_PROJECT_DIR:-.}" && ${biome_cmd} check --write "$(_biome_relpath "${fp}")") >/dev/null 2>&1 || true
+      (cd "${CLAUDE_PROJECT_DIR:-.}" && ${biome_cmd} check --write "${rel_path}") >/dev/null 2>&1 || true
     fi
   fi
 
   # Phase 2a: Biome lint (blocking) (D1, D3)
   # D3: When oxlint enabled, skip 3 overlapping nursery rules
-  local biome_lint_args="lint --reporter=json"
+  local biome_lint_args=("lint" "--reporter=json")
   local oxlint_enabled
   oxlint_enabled=$(get_ts_config "oxlint_tsgolint" "false")
   if [[ "${oxlint_enabled}" == "true" ]]; then
-    biome_lint_args+=" --skip=nursery/noFloatingPromises"
-    biome_lint_args+=" --skip=nursery/noMisusedPromises"
-    biome_lint_args+=" --skip=nursery/useAwaitThenable"
+    biome_lint_args+=("--skip=nursery/noFloatingPromises")
+    biome_lint_args+=("--skip=nursery/noMisusedPromises")
+    biome_lint_args+=("--skip=nursery/useAwaitThenable")
   fi
   local biome_output
-  # shellcheck disable=SC2086
-  biome_output=$( (cd "${CLAUDE_PROJECT_DIR:-.}" && ${biome_cmd} ${biome_lint_args} "$(_biome_relpath "${fp}")") 2>/dev/null || true)
+  local rel_path_lint
+  rel_path_lint=$(_biome_relpath "${fp}")
+  biome_output=$( (cd "${CLAUDE_PROJECT_DIR:-.}" && ${biome_cmd} "${biome_lint_args[@]}" "${rel_path_lint}") 2>/dev/null || true)
 
   if [[ -n "${biome_output}" ]]; then
     local diag_count

@@ -397,6 +397,8 @@ for the full benchmark PSF covering all 8 modules, the CLI,
 - **`docs/REFERENCE.md`**: Detailed hook system documentation
   with architecture diagrams, message flow, configuration
   reference, and testing guides
+- **`scripts/setup.py`**: Interactive setup wizard that auto-detects
+  project stack and generates `config.json`
 - **`scripts/init-typescript.sh`**: Initializes
   TypeScript support (installs Biome, creates configs)
 - **`tests/stress/run_stress_tests.sh`**: Stress test
