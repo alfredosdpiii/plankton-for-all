@@ -13,16 +13,128 @@ the `.claude/hooks/config.json` configuration file.
 
 import json
 import os
+import re
+import shlex
 import shutil
 import subprocess  # noqa: S404  # nosec B404
 from copy import deepcopy
 from pathlib import Path
+from platform import system
+from types import SimpleNamespace
 from typing import Any, cast
 
-import typer
-from rich.console import Console
-from rich.panel import Panel
-from rich.prompt import Confirm
+
+class _FallbackExit(SystemExit):
+    def __init__(self, code: int = 0) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+class _FallbackTyperError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__("No command registered on fallback Typer app.")
+
+
+class _FallbackTyper:
+    def __init__(self) -> None:
+        self._main: Any = None
+
+    def command(self):
+        def decorator(func):
+            self._main = func
+            return func
+
+        return decorator
+
+    def __call__(self) -> None:
+        if self._main is None:
+            raise _FallbackTyperError()
+        self._main()
+
+
+typer: Any
+try:
+    import typer as _typer
+except ModuleNotFoundError:
+    typer = SimpleNamespace(Exit=_FallbackExit, Typer=_FallbackTyper)
+else:
+    typer = _typer
+
+_RICH_STYLE_TOKENS = {
+    "bold",
+    "dim",
+    "italic",
+    "underline",
+    "blink",
+    "reverse",
+    "strike",
+    "red",
+    "green",
+    "yellow",
+    "blue",
+    "magenta",
+    "cyan",
+    "white",
+    "black",
+}
+_RICH_TAG_PATTERN = re.compile(r"\[([^\]]+)\]")
+
+
+def _strip_rich_markup(value: str) -> str:
+    """Strip rich-style tags while preserving literal bracket content."""
+
+    def _replace_tag(match: re.Match[str]) -> str:
+        inner = match.group(1).strip()
+        if inner.startswith("/"):
+            inner = inner[1:].strip()
+        tokens = inner.split()
+        if tokens and all(token in _RICH_STYLE_TOKENS for token in tokens):
+            return ""
+        return match.group(0)
+
+    return _RICH_TAG_PATTERN.sub(_replace_tag, value)
+
+
+class _FallbackConsole:
+    @staticmethod
+    def print(*args, **_kwargs) -> None:  # noqa: D102
+        text = " ".join(str(arg) for arg in args)
+        print(_strip_rich_markup(text))
+
+
+class _FallbackPanel:
+    @staticmethod
+    def fit(text: str, style: str = "") -> str:  # noqa: D102
+        del style
+        return text
+
+
+class _FallbackConfirm:
+    @staticmethod
+    def ask(prompt: str, default: bool = True) -> bool:  # noqa: D102
+        suffix = " [Y/n]: " if default else " [y/N]: "
+        answer = input(f"{_strip_rich_markup(prompt)}{suffix}").strip().lower()
+        if not answer:
+            return default
+        return answer in {"y", "yes"}
+
+
+Console: Any
+Panel: Any
+Confirm: Any
+try:
+    from rich.console import Console as _Console
+    from rich.panel import Panel as _Panel
+    from rich.prompt import Confirm as _Confirm
+except ModuleNotFoundError:
+    Console = _FallbackConsole
+    Panel = _FallbackPanel
+    Confirm = _FallbackConfirm
+else:
+    Console = _Console
+    Panel = _Panel
+    Confirm = _Confirm
+
 
 console = Console()
 app = typer.Typer()
@@ -103,6 +215,15 @@ DEFAULT_CONFIG = {
 }
 
 SCAN_EXCLUDE_DIRS = {".git", ".venv", "node_modules", ".claude", "__pycache__"}
+LOCAL_BIN_DIR = Path.home() / ".local" / "bin"
+JAQ_LINUX_COMMANDS = {
+    "apt-get": ["apt-get", "install", "-y", "jaq"],
+    "dnf": ["dnf", "install", "-y", "jaq"],
+    "yum": ["yum", "install", "-y", "jaq"],
+    "pacman": ["pacman", "-Sy", "--noconfirm", "jaq"],
+    "apk": ["apk", "add", "jaq"],
+    "zypper": ["zypper", "install", "-y", "jaq"],
+}
 
 
 def _is_excluded_path(path: Path) -> bool:
@@ -173,9 +294,169 @@ def merge_config(existing_config: dict[str, Any], generated_config: dict[str, An
     return merged
 
 
+def _path_persist_hint() -> str:
+    shell_name = Path(os.environ.get("SHELL", "")).name
+    if shell_name == "bash":
+        return "echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.bashrc"
+    if shell_name == "zsh":
+        return "echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.zshrc"
+    if shell_name == "fish":
+        return "fish_add_path ~/.local/bin"
+    return "Add ~/.local/bin to PATH in your shell profile."
+
+
+def _ensure_local_bin_on_path(show_hint: bool = False) -> bool:
+    """Ensure ~/.local/bin is available in this process PATH."""
+    local_bin = str(LOCAL_BIN_DIR)
+    path_entries = os.environ.get("PATH", "").split(os.pathsep)
+    if not LOCAL_BIN_DIR.exists():
+        return False
+    if local_bin in path_entries:
+        return False
+
+    os.environ["PATH"] = f"{local_bin}{os.pathsep}{os.environ.get('PATH', '')}"
+    if show_hint:
+        console.print("  [yellow]![/yellow] Added ~/.local/bin to PATH for this setup run.")
+        console.print(f"  [yellow]Persist:[/yellow] {_path_persist_hint()}")
+    return True
+
+
+def _detect_linux_package_manager() -> str | None:
+    for manager in ("apt-get", "dnf", "yum", "pacman", "apk", "zypper"):
+        if shutil.which(manager):
+            return manager
+    return None
+
+
+def _with_sudo_if_needed(command: list[str]) -> list[str]:
+    if os.name == "posix" and hasattr(os, "geteuid") and os.geteuid() != 0 and shutil.which("sudo"):
+        return ["sudo", *command]
+    return command
+
+
+def _render_command(command: list[str]) -> str:
+    return " ".join(shlex.quote(part) for part in command)
+
+
+def _run_install_command(command: list[str], description: str) -> bool:
+    console.print(f"  [cyan]→[/cyan] {description}")
+    console.print(f"    [dim]$ {_render_command(command)}[/dim]")
+    try:
+        result = subprocess.run(command, check=False)  # noqa: S603,S607  # nosec B603 B607
+    except FileNotFoundError:
+        console.print("    [red]✗[/red] Installer command not found in PATH.")
+        return False
+    if result.returncode != 0:
+        console.print(f"    [red]✗[/red] Installer exited with status {result.returncode}.")
+        return False
+    return True
+
+
+def _manual_install_hint(tool: str) -> str:
+    os_name = system().lower()
+    if tool in {"uv", "ruff"}:
+        return f"curl -LsSf https://astral.sh/{tool}/install.sh | sh"
+
+    if tool != "jaq":
+        return "bash scripts/setup.sh"
+
+    if os_name == "darwin":
+        return "brew install jaq"
+
+    if os_name != "linux":
+        return "bash scripts/setup.sh"
+
+    manager = _detect_linux_package_manager()
+    command = JAQ_LINUX_COMMANDS.get(manager)
+    if command is None:
+        return "bash scripts/setup.sh"
+    return f"sudo {_render_command(command)}"
+
+
+def _install_uv() -> bool:
+    command = ["sh", "-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"]
+    if not _run_install_command(command, "Installing uv via official installer"):
+        return False
+    _ensure_local_bin_on_path(show_hint=True)
+    return shutil.which("uv") is not None
+
+
+def _install_ruff() -> bool:
+    command = ["sh", "-c", "curl -LsSf https://astral.sh/ruff/install.sh | sh"]
+    if not _run_install_command(command, "Installing ruff via official installer"):
+        return False
+    _ensure_local_bin_on_path(show_hint=True)
+    return shutil.which("ruff") is not None
+
+
+def _install_jaq() -> bool:  # noqa: PLR0911
+    os_name = system().lower()
+    if os_name == "darwin":
+        if not shutil.which("brew"):
+            console.print("  [red]✗[/red] Homebrew not found; cannot auto-install jaq on macOS.")
+            return False
+        if not _run_install_command(["brew", "install", "jaq"], "Installing jaq with Homebrew"):
+            return False
+        return shutil.which("jaq") is not None
+
+    if os_name != "linux":
+        console.print(f"  [red]✗[/red] Unsupported OS for automatic jaq install: {os_name}")
+        return False
+
+    manager = _detect_linux_package_manager()
+    base_command = JAQ_LINUX_COMMANDS.get(manager)
+    if base_command is None:
+        console.print("  [red]✗[/red] Could not detect a supported Linux package manager for jaq.")
+        return False
+
+    command = _with_sudo_if_needed(base_command)
+    if not _run_install_command(command, f"Installing jaq via {manager}"):
+        return False
+    return shutil.which("jaq") is not None
+
+
+def _guided_install_missing_tools(missing_required: list[str]) -> list[str]:
+    if not missing_required:
+        return []
+
+    installers = {
+        "jaq": _install_jaq,
+        "ruff": _install_ruff,
+        "uv": _install_uv,
+    }
+
+    console.print("\n[bold yellow]Missing required tools detected.[/bold yellow]")
+    if not Confirm.ask("Run guided installer for missing tools now?", default=True):
+        return missing_required
+
+    _ensure_local_bin_on_path()
+    for tool in list(missing_required):
+        if shutil.which(tool):
+            continue
+
+        if not Confirm.ask(f"Install '{tool}' now?", default=True):
+            continue
+
+        installer = installers.get(tool)
+        if installer is None:
+            continue
+
+        if installer():
+            console.print(f"    [green]✓[/green] {tool} installed successfully.")
+            continue
+
+        manual_hint = _manual_install_hint(tool)
+        console.print(f"    [yellow]![/yellow] Could not install {tool} automatically.")
+        console.print(f"    [yellow]Manual:[/yellow] {manual_hint}")
+
+    _ensure_local_bin_on_path()
+    return [tool for tool in REQUIRED_TOOLS if not shutil.which(tool)]
+
+
 def check_tools():
     """Verify that required system tools are installed."""
     console.print("[bold blue]Checking System Dependencies...[/bold blue]")
+    _ensure_local_bin_on_path()
     missing_required = []
 
     for tool, desc in REQUIRED_TOOLS.items():
@@ -187,16 +468,17 @@ def check_tools():
             missing_required.append(tool)
 
     if missing_required:
-        console.print("\n[bold red]Missing required tools. Please install them and run this script again.[/bold red]")
-        if "jaq" in missing_required:
-            console.print(
-                "  [yellow]Note: 'jaq' is a faster alternative to 'jq'. "
-                "On macOS: 'brew install jaq'. "
-                "On Linux: 'apt/pacman install jaq' or download from GitHub.[/yellow]"
-            )
-        # We don't exit here, we let the user proceed to config generation if they want
-        if not Confirm.ask("Continue anyway?"):
+        missing_required = _guided_install_missing_tools(missing_required)
+
+    if missing_required:
+        console.print("\n[bold red]Still missing required tools:[/bold red]")
+        for tool in missing_required:
+            console.print(f"  [red]- {tool}[/red] -> [yellow]{_manual_install_hint(tool)}[/yellow]")
+        console.print("Install them now for full functionality, or continue with limited checks.")
+        if not Confirm.ask("Continue anyway?", default=False):
             raise typer.Exit(code=1)
+    else:
+        console.print("  [green]✓[/green] All required tools are installed.")
 
     console.print("\n[bold blue]Checking Optional Linters...[/bold blue]")
     for tool, desc in OPTIONAL_TOOLS.items():
