@@ -674,7 +674,8 @@ def _install_pre_commit() -> bool:
         if not _run_install_command(command, description):
             continue
         _ensure_local_bin_on_path(show_hint=True)
-        _ensure_pip_user_bin_on_path()
+        if "--user" in command:
+            _ensure_pip_user_bin_on_path()
         if shutil.which("pre-commit"):
             return True
     return False

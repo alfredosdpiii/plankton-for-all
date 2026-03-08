@@ -334,7 +334,7 @@ CI pipeline, and 303+ automated checks.
 - **Quick reference**: `bash .claude/hooks/test_hook.sh --self-test`
   (113 cases), `bash .claude/tests/hooks/verify_feedback_loop.sh`
   (28 checks), `bash tests/stress/run_stress_tests.sh` (133 tests),
-  `.venv/bin/pytest tests/` (344 tests: 314 unit + 30 integration);
+  `.venv/bin/pytest tests/` (345 tests: 315 unit + 30 integration);
   hook investigation tests: `test_nursery_config.sh` (3 tests),
   `test_env_propagation.sh` (3 tests), `test_subprocess_permissions.sh` (5 tests)
 - **Type safety**: Python 3.11+; ty in Phase 2b;

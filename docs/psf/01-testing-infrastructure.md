@@ -15,7 +15,7 @@
     markdown report generation
   - CI pipeline: pre-commit (lint) + pytest (test) on push/PR
 - **Test totals**: 113 + 28 + 10 + 20 + 133 + 11 = 315 hook checks
-  (+ 103 agent-based integration tests + 344 pytest tests)
+  (+ 103 agent-based integration tests + 345 pytest tests)
 - **Dependencies**: ShellCheck, ruff, jaq, yamllint, hadolint,
   taplo, markdownlint-cli2; biome optional
 
@@ -72,7 +72,7 @@ graph TB
     end
 
     subgraph "Layer 4: Unit Tests"
-        UT[pytest tests/unit/<br/>11 files, 314 tests, swebench + setup coverage]
+        UT[pytest tests/unit/<br/>11 files, 315 tests, swebench + setup coverage]
     end
 
     subgraph "Layer 5: CI"
@@ -301,11 +301,11 @@ graph TB
 
 ## Risks, Tech Debt, Open Questions
 
-- **Pytest tests**: `tests/unit/` (11 files, 314 tests) +
-  `tests/integration/` (7 files, 30 tests) = 344 total;
+- **Pytest tests**: `tests/unit/` (11 files, 315 tests) +
+  `tests/integration/` (7 files, 30 tests) = 345 total;
   see [02-benchmark-swebench.md](02-benchmark-swebench.md)
   for swebench per-file breakdown; `test_setup_wizard.py`
-  (47 tests) covers the interactive setup wizard;
+  (48 tests) covers the interactive setup wizard;
   hook testing remains shell-based
 - **Stress test size**: `run_stress_tests.sh` at 2,347 lines
   is complex; per-category modules would help

@@ -633,6 +633,44 @@ def test_install_pre_commit_resolves_macos_bin_path(monkeypatch) -> None:
     assert "pip_user" in path_calls
 
 
+def test_install_pre_commit_skips_pip_user_path_for_uv(monkeypatch) -> None:
+    setup_module = _load_setup_module()
+
+    installed = {"pre_commit": False}
+    path_calls: list[str] = []
+
+    def fake_which(tool: str) -> str | None:
+        if tool == "pre-commit":
+            return "/usr/bin/pre-commit" if installed["pre_commit"] else None
+        if tool == "uv":
+            return "/usr/bin/uv"
+        return None
+
+    def fake_run_install(command: list[str], description: str) -> bool:
+        if command[0] == "uv":
+            installed["pre_commit"] = True
+            return True
+        return False
+
+    monkeypatch.setattr(setup_module.shutil, "which", fake_which)
+    monkeypatch.setattr(setup_module, "_run_install_command", fake_run_install)
+    monkeypatch.setattr(
+        setup_module,
+        "_ensure_local_bin_on_path",
+        lambda show_hint=False: path_calls.append("local_bin") or False,
+    )
+    monkeypatch.setattr(
+        setup_module,
+        "_ensure_pip_user_bin_on_path",
+        lambda: path_calls.append("pip_user") or False,
+    )
+
+    result = setup_module._install_pre_commit()
+    assert result is True
+    assert "local_bin" in path_calls
+    assert "pip_user" not in path_calls
+
+
 def test_ensure_pip_user_bin_on_path_noop_when_already_in_path(tmp_path: Path, monkeypatch) -> None:
     setup_module = _load_setup_module()
     fake_base = tmp_path / "Library" / "Python"
