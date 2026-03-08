@@ -5,7 +5,7 @@
 - **Purpose**: Paired A/B benchmark measuring Plankton hook
   impact on SWE-bench task resolution via Claude Code
 - **Scope**: `benchmark/swebench/` (8 Python modules + CLI),
-  `tests/unit/` (10 files, 267 tests),
+  `tests/unit/` (11 files, 304 tests — 10 swebench + 1 setup wizard),
   `tests/integration/` (7 files, 30 tests)
 - **Key responsibilities**:
   - Drive Claude CLI to solve SWE-bench tasks under two
@@ -280,13 +280,14 @@ graph TD
 
 ## Test Coverage
 
-### Unit Tests (267 tests, 10 files)
+### Unit Tests (304 tests, 11 files)
 
 | File | Tests | Coverage |
 | --- | --- | --- |
 | `test_swebench_prereqs.py` | 53 | 15 checks, run_all, format, version |
 | `test_swebench_runner.py` | 49 | flip, reset, hooks, abort, resume, dry_run |
 | `test_swebench_agent.py` | 47 | cmd, solve, parse, patch, cost, dry_run |
+| `test_setup_wizard.py` | 37 | rerunnable config editor, dependency detection |
 | `test_swebench_gate.py` | 33 | 6 criteria, run_gate, format, dry_run |
 | `test_hal_adapter.py` | 26 | dispatch, hooks, errors, metadata, validation |
 | `test_swebench_tasks.py` | 21 | JSONL/HF loading, select, checkout, prepare |
@@ -320,7 +321,7 @@ graph TD
 - **Gate run**: `python -m benchmark.swebench gate --repos-dir DIR`
 - **Full run**: `python -m benchmark.swebench run --repos-dir DIR`
 - **Resume**: `python -m benchmark.swebench run --repos-dir DIR --resume`
-- **Tests**: `.venv/bin/python -m pytest tests -x -v` (297 tests)
+- **Tests**: `.venv/bin/python -m pytest tests -x -v` (334 tests)
 - **HAL harness**: `hal-eval` with `hal_adapter.run` entry point
 
 ## Archive

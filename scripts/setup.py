@@ -459,6 +459,31 @@ def _ensure_local_bin_on_path(show_hint: bool = False) -> bool:
     return True
 
 
+def _ensure_pip_user_bin_on_path() -> bool:
+    """Ensure macOS pip --user script dirs are on PATH.
+
+    pip --user installs scripts to ~/Library/Python/<version>/bin on macOS
+    (system Python), unlike ~/.local/bin on Linux. Glob all version dirs.
+    """
+    macos_pip_base = Path.home() / "Library" / "Python"
+    if not macos_pip_base.exists():
+        return False
+    added = False
+    path_entries = os.environ.get("PATH", "").split(os.pathsep)
+
+    def _version_key(p: Path) -> tuple[int, ...]:
+        try:
+            return tuple(int(x) for x in p.parent.name.split("."))
+        except ValueError:
+            return (0,)
+
+    for bin_dir in sorted(macos_pip_base.glob("*/bin"), key=_version_key):
+        if str(bin_dir) not in path_entries:
+            os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
+            added = True
+    return added
+
+
 def _detect_linux_package_manager() -> str | None:
     for manager in ("apt-get", "dnf", "yum", "pacman", "apk", "zypper"):
         if shutil.which(manager):
@@ -630,6 +655,8 @@ def _install_pre_commit() -> bool:
     if shutil.which("pipx"):
         install_commands.append((["pipx", "install", "pre-commit"], "Installing pre-commit via pipx"))
 
+    # pip --user is acceptable here: the setup wizard bootstraps tooling
+    # before hooks are active, so enforce_package_managers won't block it.
     python_cmd = shutil.which("python3") or shutil.which("python")
     if python_cmd:
         install_commands.append(
@@ -640,6 +667,7 @@ def _install_pre_commit() -> bool:
         if not _run_install_command(command, description):
             continue
         _ensure_local_bin_on_path(show_hint=True)
+        _ensure_pip_user_bin_on_path()
         if shutil.which("pre-commit"):
             return True
     return False
@@ -987,10 +1015,13 @@ def configure_selected_sections(
 def _install_pre_commit_hooks() -> None:
     console.print("  Installing pre-commit hooks...")
     try:
-        subprocess.run(["pre-commit", "install"], check=True)  # noqa: S607  # nosec B603 B607
+        subprocess.run(["pre-commit", "install"], check=True, capture_output=True)  # noqa: S607  # nosec B603 B607
         console.print("    [green]✓[/green] pre-commit hooks installed")
-    except subprocess.CalledProcessError:
-        console.print("    [red]✗[/red] pre-commit install failed")
+    except FileNotFoundError:
+        console.print("    [red]✗[/red] pre-commit install failed: binary not found in PATH")
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or b"").decode("utf-8", errors="replace").strip()
+        console.print(f"    [red]✗[/red] pre-commit install failed{': ' + detail if detail else ''}")
 
 
 def _ensure_pre_commit_ready() -> None:

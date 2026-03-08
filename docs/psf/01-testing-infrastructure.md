@@ -15,7 +15,7 @@
     markdown report generation
   - CI pipeline: pre-commit (lint) + pytest (test) on push/PR
 - **Test totals**: 113 + 28 + 10 + 20 + 133 + 11 = 315 hook checks
-  (+ 103 agent-based integration tests + 297 pytest tests)
+  (+ 103 agent-based integration tests + 334 pytest tests)
 - **Dependencies**: ShellCheck, ruff, jaq, yamllint, hadolint,
   taplo, markdownlint-cli2; biome optional
 
@@ -72,7 +72,7 @@ graph TB
     end
 
     subgraph "Layer 4: Unit Tests"
-        UT[pytest tests/unit/<br/>10 files, 267 tests, swebench coverage]
+        UT[pytest tests/unit/<br/>11 files, 304 tests, swebench + setup coverage]
     end
 
     subgraph "Layer 5: CI"
@@ -99,7 +99,7 @@ graph TB
 
 ### test_hook.sh (Self-Test Suite)
 
-- **Location**: `.claude/hooks/test_hook.sh` (~2,012 lines)
+- **Location**: `.claude/hooks/test_hook.sh` (~2,089 lines)
 - **Invocation**: `bash .claude/hooks/test_hook.sh --self-test`
 - **Test count**: 113 pass / 0 fail
 - **Implementation**: `run_self_test()` orchestrates all tests
@@ -301,10 +301,12 @@ graph TB
 
 ## Risks, Tech Debt, Open Questions
 
-- **Pytest tests**: `tests/unit/` (10 files, 267 tests) +
-  `tests/integration/` (7 files, 30 tests) = 297 total;
+- **Pytest tests**: `tests/unit/` (11 files, 304 tests) +
+  `tests/integration/` (7 files, 30 tests) = 334 total;
   see [02-benchmark-swebench.md](02-benchmark-swebench.md)
-  for per-file breakdown; hook testing remains shell-based
+  for swebench per-file breakdown; `test_setup_wizard.py`
+  (37 tests) covers the interactive setup wizard;
+  hook testing remains shell-based
 - **Stress test size**: `run_stress_tests.sh` at 2,347 lines
   is complex; per-category modules would help
 - **Agent tests require TeamCreate**: 103 integration tests

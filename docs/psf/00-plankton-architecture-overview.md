@@ -165,7 +165,7 @@ graph TB
 
 ### multi_linter.sh (PostToolUse Hook)
 
-- **Location**: `.claude/hooks/multi_linter.sh` (~1,606 lines)
+- **Location**: `.claude/hooks/multi_linter.sh` (~1,677 lines)
 - **Responsibilities**:
   - Dispatches files to language-specific handlers based on extension
   - Runs three-phase lint: format, collect
@@ -188,7 +188,7 @@ graph TB
 
 ### protect_linter_configs.sh (PreToolUse Hook)
 
-- **Location**: `.claude/hooks/protect_linter_configs.sh` (~87 lines)
+- **Location**: `.claude/hooks/protect_linter_configs.sh` (~164 lines)
 - **Responsibilities**: Blocks Edit/Write on protected config files and hook scripts
 - **Implementation**: Extracts file path from stdin
   JSON, matches against `config.json` protected list
@@ -198,7 +198,7 @@ graph TB
 
 ### stop_config_guardian.sh (Stop Hook)
 
-- **Location**: `.claude/hooks/stop_config_guardian.sh` (~158 lines)
+- **Location**: `.claude/hooks/stop_config_guardian.sh` (~162 lines)
 - **Responsibilities**: Detects modified config files
   at session end; prompts user to keep or restore
 - **Implementation**: `git diff --name-only` (no LLM).
@@ -230,7 +230,7 @@ graph TB
 
 ### enforce_package_managers.sh (PreToolUse Hook)
 
-- **Location**: `.claude/hooks/enforce_package_managers.sh` (~512 lines)
+- **Location**: `.claude/hooks/enforce_package_managers.sh` (~705 lines)
 - **Responsibilities**: Intercepts legacy package manager
   commands in Bash tool and blocks or warns, suggesting
   project-preferred alternatives (uv for Python, bun for JS)
@@ -245,7 +245,7 @@ graph TB
 
 ### test_hook.sh (Debug/Test Utility)
 
-- **Location**: `.claude/hooks/test_hook.sh` (~2,012 lines)
+- **Location**: `.claude/hooks/test_hook.sh` (~2,089 lines)
 - **Responsibilities**: Self-test suite covering all
   file types, model selection, TS handling, config
   protection, and edge cases
@@ -334,7 +334,7 @@ CI pipeline, and 303+ automated checks.
 - **Quick reference**: `bash .claude/hooks/test_hook.sh --self-test`
   (113 cases), `bash .claude/tests/hooks/verify_feedback_loop.sh`
   (28 checks), `bash tests/stress/run_stress_tests.sh` (133 tests),
-  `.venv/bin/pytest tests/` (297 tests: 267 unit + 30 integration);
+  `.venv/bin/pytest tests/` (334 tests: 304 unit + 30 integration);
   hook investigation tests: `test_nursery_config.sh` (3 tests),
   `test_env_propagation.sh` (3 tests), `test_subprocess_permissions.sh` (5 tests)
 - **Type safety**: Python 3.11+; ty in Phase 2b;
@@ -372,7 +372,7 @@ CI pipeline, and 303+ automated checks.
 
 ## Risks, Tech Debt, Open Questions
 
-- **Shell script size**: `multi_linter.sh` ~1,486
+- **Shell script size**: `multi_linter.sh` ~1,677
   lines; per-language modules would help
 - **Fragile parsing**: yamllint/flake8/markdownlint
   output parsed via `sed`; format changes break it
@@ -397,10 +397,21 @@ for the full benchmark PSF covering all 8 modules, the CLI,
 - **`docs/REFERENCE.md`**: Detailed hook system documentation
   with architecture diagrams, message flow, configuration
   reference, and testing guides
-- **`scripts/setup.py`**: Interactive setup wizard that auto-detects
-  project stack and generates `config.json`
-- **`scripts/init-typescript.sh`**: Initializes
+- **`scripts/setup.py`** (1,086 lines): Interactive setup wizard that
+  auto-detects project stack, generates `config.json`, and supports
+  rerunnable config editing with guided pre-commit setup. Validates
+  dependencies, offers dependency installation via Homebrew/package
+  managers, and configures TypeScript/Python/Shell linting options
+- **`scripts/setup.sh`** (325 lines): Non-interactive installer for
+  CI and scripted environments; mirrors setup.py functionality
+- **`scripts/init-typescript.sh`** (264 lines): Initializes
   TypeScript support (installs Biome, creates configs)
+- **`scripts/pre_commit_plankton_strict.sh`** (160 lines): Strict
+  pre-commit checks for CI enforcement
+- **`scripts/pre_push_plankton_hooks.sh`** (22 lines): Pre-push hook
+  runner for git integration
+- **`scripts/check_commit_message_no_ai_attribution.sh`**: Commit
+  message policy hook enforcing AI attribution rules
 - **`tests/stress/run_stress_tests.sh`**: Stress test
   suite for hook performance under load
 - **`.claude/tests/hooks/`**: Integration test suite
