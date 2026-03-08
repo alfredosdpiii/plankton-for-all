@@ -659,6 +659,23 @@ def test_ensure_pip_user_bin_on_path_prefers_higher_versions(tmp_path: Path, mon
     assert idx_13 < idx_9, "3.13 should appear before 3.9 in PATH (higher version = higher priority)"
 
 
+def test_ensure_pip_user_bin_on_path_preserves_priority_with_partial_presence(tmp_path: Path, monkeypatch) -> None:
+    setup_module = _load_setup_module()
+    fake_base = tmp_path / "Library" / "Python"
+    for ver in ("3.9", "3.11", "3.13"):
+        (fake_base / ver / "bin").mkdir(parents=True)
+    monkeypatch.setattr(setup_module.Path, "home", lambda: tmp_path)
+    path_13 = str(fake_base / "3.13" / "bin")
+    monkeypatch.setenv("PATH", f"/usr/bin{os.pathsep}{path_13}{os.pathsep}/usr/local/bin")
+
+    assert setup_module._ensure_pip_user_bin_on_path() is True
+    path_entries = os.environ["PATH"].split(os.pathsep)
+    idx_13 = path_entries.index(str(fake_base / "3.13" / "bin"))
+    idx_11 = path_entries.index(str(fake_base / "3.11" / "bin"))
+    idx_9 = path_entries.index(str(fake_base / "3.9" / "bin"))
+    assert idx_13 < idx_11 < idx_9, f"Expected 3.13 < 3.11 < 3.9 in PATH, got indices {idx_13}, {idx_11}, {idx_9}"
+
+
 def test_ensure_pip_user_bin_on_path_noop_when_no_dirs(tmp_path: Path, monkeypatch) -> None:
     setup_module = _load_setup_module()
     monkeypatch.setattr(setup_module.Path, "home", lambda: tmp_path)

@@ -468,8 +468,6 @@ def _ensure_pip_user_bin_on_path() -> bool:
     macos_pip_base = Path.home() / "Library" / "Python"
     if not macos_pip_base.exists():
         return False
-    added = False
-    path_entries = os.environ.get("PATH", "").split(os.pathsep)
 
     def _version_key(p: Path) -> tuple[int, ...]:
         try:
@@ -477,11 +475,20 @@ def _ensure_pip_user_bin_on_path() -> bool:
         except ValueError:
             return (0,)
 
-    for bin_dir in sorted(macos_pip_base.glob("*/bin"), key=_version_key):
-        if str(bin_dir) not in path_entries:
-            os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
-            added = True
-    return added
+    # Sort descending so highest version (e.g. 3.13) gets highest PATH priority
+    all_bin_dirs = sorted(macos_pip_base.glob("*/bin"), key=_version_key, reverse=True)
+    if not all_bin_dirs:
+        return False
+
+    bin_dir_strs = {str(d) for d in all_bin_dirs}
+    current_path = os.environ.get("PATH", "")
+    remaining = [e for e in current_path.split(os.pathsep) if e not in bin_dir_strs]
+    new_path = os.pathsep.join([str(d) for d in all_bin_dirs] + remaining)
+
+    if current_path == new_path:
+        return False
+    os.environ["PATH"] = new_path
+    return True
 
 
 def _detect_linux_package_manager() -> str | None:
