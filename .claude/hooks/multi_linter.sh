@@ -528,13 +528,22 @@ _delegate_opencode() {
   command -v opencode >/dev/null 2>&1 && oc_cmd="opencode"
   [[ -z "${oc_cmd}" ]] && { echo "[hook:error] opencode binary not found" >&2; return 0; }
 
+  # Map plankton tier names to opencode model IDs.
+  # PLANKTON_OC_MODEL_<TIER> env vars allow user override.
+  # When the tier maps to "default", --model is omitted and opencode uses
+  # whatever model the user has configured globally.
   local oc_model
   case "${model}" in
-    haiku)  oc_model="anthropic/claude-haiku" ;;
-    sonnet) oc_model="anthropic/claude-sonnet" ;;
-    opus)   oc_model="anthropic/claude-opus" ;;
+    haiku)  oc_model="${PLANKTON_OC_MODEL_HAIKU:-default}" ;;
+    sonnet) oc_model="${PLANKTON_OC_MODEL_SONNET:-default}" ;;
+    opus)   oc_model="${PLANKTON_OC_MODEL_OPUS:-default}" ;;
     *)      oc_model="${model}" ;;
   esac
+
+  local model_flag=()
+  if [[ "${oc_model}" != "default" ]]; then
+    model_flag=(--model "${oc_model}")
+  fi
 
   local timeout_cmd=""
   command -v timeout >/dev/null 2>&1 && timeout_cmd="timeout ${tier_timeout}"
@@ -542,13 +551,16 @@ _delegate_opencode() {
   local file_hash_before=""
   [[ -f "${fp}" ]] && file_hash_before=$(cksum "${fp}" 2>/dev/null || true)
 
-  # Disable plugins to prevent recursion; attach file context
+  # Disable plugins to prevent recursion; use plankton-fixer agent for
+  # tool restriction + auto-approve; inline permission as fallback.
   local subprocess_exit=0
   ${timeout_cmd} env \
     OPENCODE_DISABLE_DEFAULT_PLUGINS=true \
+    OPENCODE_PERMISSION='{"edit":"allow","bash":"deny"}' \
     "${oc_cmd}" run \
-    --model "${oc_model}" \
-    --file "${fp}" \
+    --agent "plankton-fixer" \
+    "${model_flag[@]}" \
+    --file "${fp}" -- \
     "${prompt}" >/dev/null 2>&1 || subprocess_exit=$?
 
   local file_hash_after=""
