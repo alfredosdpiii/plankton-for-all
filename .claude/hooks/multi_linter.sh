@@ -488,9 +488,9 @@ _delegate_pi() {
 
   local pi_model
   case "${model}" in
-    haiku)  pi_model="haiku" ;;
-    sonnet) pi_model="sonnet" ;;
-    opus)   pi_model="opus" ;;
+    haiku)  pi_model="anthropic/claude-haiku-4-5" ;;
+    sonnet) pi_model="anthropic/claude-sonnet-4-5" ;;
+    opus)   pi_model="anthropic/claude-opus-4" ;;
     *)      pi_model="${model}" ;;
   esac
 
@@ -509,6 +509,7 @@ _delegate_pi() {
     --tools "${pi_tools}" \
     --model "${pi_model}" \
     --no-session \
+    --no-extensions \
     "@${fp}" >/dev/null 2>&1 || subprocess_exit=$?
 
   local file_hash_after=""
