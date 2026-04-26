@@ -2,13 +2,14 @@
   "name": "pi-plankton-extension",
   "version": "1.0.0",
   "type": "module",
+  "license": "MIT",
   "pi": {
     "extensions": ["./index.ts"]
   },
   "peerDependencies": {
-    "@mariozechner/pi-ai": "^0.69.0",
-    "@mariozechner/pi-coding-agent": "^0.69.0",
-    "@mariozechner/pi-tui": "^0.69.0",
-    "typebox": "^1.1.32"
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "typebox": "*"
   }
 }

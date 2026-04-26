@@ -2,7 +2,7 @@
   "name": "pi-plankton",
   "version": "1.0.0",
   "type": "module",
-  "author": "",
+  "author": "alfredosdpiii",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/alfredosdpiii/pi-plankton.git"
@@ -17,6 +17,9 @@
   "pi": {
     "extensions": [".pi/extensions/plankton"],
     "image": "https://raw.githubusercontent.com/alfredosdpiii/pi-plankton/main/assets/plankton-cover.png"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.15",
@@ -43,7 +46,7 @@
     "fork",
     "linting"
   ],
-  "license": "ISC",
+  "license": "MIT",
   "peerDependencies": {
     "@mariozechner/pi-ai": "*",
     "@mariozechner/pi-coding-agent": "*",
@@ -53,6 +56,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "bunx tsc --noEmit && bash .plankton/test/test_auto_init.sh && bash .plankton/test/test_hook.sh --self-test && uv run pytest",
-    "pack:dry-run": "npm pack --dry-run"
+    "pack:dry-run": "npm pack --dry-run",
+    "prepublishOnly": "bun run test"
   }
 }

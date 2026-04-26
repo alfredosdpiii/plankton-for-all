@@ -41,16 +41,22 @@ are used as the fallback.
 
 ## Install as a Pi package
 
-Install globally for all Pi sessions:
+After the npm package is published, install globally for all Pi sessions:
 
 ```bash
-pi install git:github.com/alfredosdpiii/pi-plankton
+pi install npm:pi-plankton
 ```
 
 Install for one project and commit `.pi/settings.json` for a team:
 
 ```bash
-pi install -l git:github.com/alfredosdpiii/pi-plankton
+pi install -l npm:pi-plankton
+```
+
+You can also install directly from GitHub:
+
+```bash
+pi install git:github.com/alfredosdpiii/pi-plankton
 ```
 
 Try a local checkout without adding it to settings:
@@ -200,10 +206,17 @@ bash .plankton/test/test_hook.sh --self-test
 uv run pytest
 ```
 
-Package dry-run:
+Package and publish dry-runs:
 
 ```bash
 npm pack --dry-run
+npm publish --dry-run
+```
+
+Publish to npm after the dry-runs pass and you are logged in with `npm login`:
+
+```bash
+npm publish
 ```
 
 Useful direct hook checks:
