@@ -176,8 +176,9 @@ load_model_patterns() {
   VOLUME_THRESHOLD=$(echo "${CONFIG_JSON}" | jaq -r '.subprocess.volume_threshold // empty' 2>/dev/null) || true
   [[ -z "${VOLUME_THRESHOLD}" ]] && VOLUME_THRESHOLD=5
 
-  # Cross-tier overrides (env var takes precedence for timeout)
-  GLOBAL_MODEL_OVERRIDE=$(echo "${CONFIG_JSON}" | jaq -r '.subprocess.global_model_override // empty' 2>/dev/null) || true
+  # Cross-tier overrides (env vars take precedence)
+  CORRECTION_MODEL=$(echo "${CONFIG_JSON}" | jaq -r '.subprocess.correction_model // .subprocess.global_model_override // empty' 2>/dev/null) || true
+  [[ -n "${PLANKTON_CORRECTION_MODEL:-}" ]] && CORRECTION_MODEL="${PLANKTON_CORRECTION_MODEL}"
   MAX_TURNS_OVERRIDE=$(echo "${CONFIG_JSON}" | jaq -r '.subprocess.max_turns_override // empty' 2>/dev/null) || true
   TIMEOUT_OVERRIDE=$(echo "${CONFIG_JSON}" | jaq -r '.subprocess.timeout_override // empty' 2>/dev/null) || true
   [[ -n "${HOOK_SUBPROCESS_TIMEOUT:-}" ]] && TIMEOUT_OVERRIDE="${HOOK_SUBPROCESS_TIMEOUT}"
@@ -218,7 +219,7 @@ load_model_patterns() {
   fi
 
   readonly HAIKU_CODE_PATTERN SONNET_CODE_PATTERN OPUS_CODE_PATTERN VOLUME_THRESHOLD
-  readonly GLOBAL_MODEL_OVERRIDE MAX_TURNS_OVERRIDE TIMEOUT_OVERRIDE
+  readonly CORRECTION_MODEL MAX_TURNS_OVERRIDE TIMEOUT_OVERRIDE
   readonly HAIKU_MAX_TURNS SONNET_MAX_TURNS OPUS_MAX_TURNS
   readonly HAIKU_TIMEOUT SONNET_TIMEOUT OPUS_TIMEOUT
   readonly HAIKU_TOOLS SONNET_TOOLS OPUS_TOOLS
@@ -755,9 +756,9 @@ spawn_fix_subprocess() {
   local tier_timeout=""
   local tier_tools=""
 
-  # Global model override skips all tier selection
-  if [[ -n "${GLOBAL_MODEL_OVERRIDE}" ]]; then
-    model="${GLOBAL_MODEL_OVERRIDE}"
+  # correction_model skips tier selection when configured.
+  if [[ -n "${CORRECTION_MODEL}" ]]; then
+    model="${CORRECTION_MODEL}"
   else
     # Check for opus-level codes
     local has_opus_codes="false"
@@ -784,7 +785,7 @@ spawn_fix_subprocess() {
   fi
 
   # Warn about violation codes that don't match any tier pattern
-  if [[ "${model}" == "haiku" ]] && [[ -z "${GLOBAL_MODEL_OVERRIDE}" ]]; then
+  if [[ "${model}" == "haiku" ]] && [[ -z "${CORRECTION_MODEL}" ]]; then
     local unmatched_codes
     unmatched_codes=$(echo "${prompt_violations_json}" | jaq -r '.[].code' 2>/dev/null | sort -u) || true
     while IFS= read -r code; do

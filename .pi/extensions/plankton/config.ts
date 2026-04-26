@@ -90,6 +90,7 @@ const defaultPlanktonConfig = {
   subprocess: {
     settings_file: ".plankton/subprocess-settings.json",
     delegate_cmd: "pi",
+    correction_model: "gpt-5.4-mini",
   },
   jscpd: {
     session_threshold: 3,
@@ -387,6 +388,13 @@ export function setValidatedConfigValue(config: PlanktonConfig, key: string, val
     return;
   }
 
+  if (key === "correction_model") {
+    if (typeof value !== "string" && value !== null) throw new Error("correction_model must be a string or null.");
+    config.subprocess = isObject(config.subprocess) ? config.subprocess : {};
+    config.subprocess.correction_model = value ?? undefined;
+    return;
+  }
+
   if (!topLevelKeys.has(key)) throw new Error(`Config key '${key}' is not allowed.`);
 
   switch (key) {
@@ -429,6 +437,7 @@ export function formatConfigSummary(context: PlanktonContext, config: PlanktonCo
   const protectedCount = Array.isArray(config.protected_files) ? config.protected_files.length : 0;
   const packageManagers = isObject(config.package_managers) ? config.package_managers : {};
   const subprocess = isObject(config.subprocess) ? config.subprocess : {};
+  const correctionModel = subprocess.correction_model ?? subprocess.global_model_override ?? "tiered default";
   const installedGitHooks = context.gitHooksInstalled?.join(", ") || "none";
   const skippedGitHooks = context.gitHooksSkipped?.join(", ") || "none";
 
@@ -445,5 +454,6 @@ export function formatConfigSummary(context: PlanktonContext, config: PlanktonCo
     `Protected files: ${protectedCount}`,
     `Package managers: python=${String(packageManagers.python ?? "off")}, javascript=${String(packageManagers.javascript ?? "off")}`,
     `Delegate command: ${String(subprocess.delegate_cmd ?? "pi")}`,
+    `Correction model: ${String(correctionModel)}`,
   ].join("\n");
 }

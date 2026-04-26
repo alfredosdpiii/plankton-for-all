@@ -21,6 +21,8 @@ export interface PlanktonConfig {
   subprocess?: {
     settings_file?: string;
     delegate_cmd?: string;
+    correction_model?: string;
+    global_model_override?: string | null;
     [key: string]: unknown;
   };
   jscpd?: Record<string, unknown>;

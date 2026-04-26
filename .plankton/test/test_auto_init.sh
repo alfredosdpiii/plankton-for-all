@@ -77,6 +77,7 @@ const rawConfig = JSON.parse(await readFile(configPath, "utf8"));
 assert(rawConfig.languages?.typescript?.semgrep === true, "default TypeScript semgrep should be enabled");
 assert(rawConfig.languages?.elixir?.credo === true, "default Elixir Credo should be enabled");
 assert(rawConfig.subprocess?.delegate_cmd === "pi", "default delegate should be pi");
+assert(rawConfig.subprocess?.correction_model === "gpt-5.4-mini", "default correction model should be configured");
 
 const { config } = await mod.loadPlanktonConfig(initialized);
 assert(config.subprocess?.settings_file === ".plankton/subprocess-settings.json", "config loader should preserve settings file");

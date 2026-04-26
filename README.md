@@ -104,7 +104,8 @@ Important defaults:
   "tested_version": "2.1.50",
   "subprocess": {
     "settings_file": ".plankton/subprocess-settings.json",
-    "delegate_cmd": "pi"
+    "delegate_cmd": "pi",
+    "correction_model": "gpt-5.4-mini"
   },
   "package_managers": {
     "python": "uv",
@@ -115,6 +116,12 @@ Important defaults:
 
 Legacy delegate values are coerced at read time: `auto` and removed agent names
 become `pi`; unknown values become `none`.
+
+`subprocess.correction_model` controls the Pi model used for automatic correction
+subprocesses. Set it to any Pi `--model` value (for example,
+`anthropic/claude-haiku-4-5`, `sonnet`, or `gpt-5.4-mini`). If omitted,
+Plankton falls back to tiered model selection; legacy
+`subprocess.global_model_override` is still honored.
 
 ## Verification
 

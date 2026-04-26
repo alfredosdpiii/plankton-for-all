@@ -88,7 +88,9 @@ export function registerPlanktonTools(pi: ExtensionAPI, state: PlanktonState): v
       if (params.action === "get") {
         const { config } = await loadPlanktonConfig(context);
         const key = params.key;
-        const value = key in config ? config[key] : config.languages?.[key];
+        const value = key === "correction_model"
+          ? config.subprocess?.correction_model
+          : key in config ? config[key] : config.languages?.[key];
         return textResult(JSON.stringify(value ?? null, null, 2), { key, value });
       }
 

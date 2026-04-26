@@ -176,8 +176,9 @@ load_model_patterns() {
   VOLUME_THRESHOLD=$(echo "${CONFIG_JSON}" | jaq -r '.subprocess.volume_threshold // empty' 2>/dev/null) || true
   [[ -z "${VOLUME_THRESHOLD}" ]] && VOLUME_THRESHOLD=5
 
-  # Cross-tier overrides (env var takes precedence for timeout)
-  GLOBAL_MODEL_OVERRIDE=$(echo "${CONFIG_JSON}" | jaq -r '.subprocess.global_model_override // empty' 2>/dev/null) || true
+  # Cross-tier overrides (env vars take precedence)
+  CORRECTION_MODEL=$(echo "${CONFIG_JSON}" | jaq -r '.subprocess.correction_model // .subprocess.global_model_override // empty' 2>/dev/null) || true
+  [[ -n "${PLANKTON_CORRECTION_MODEL:-}" ]] && CORRECTION_MODEL="${PLANKTON_CORRECTION_MODEL}"
   MAX_TURNS_OVERRIDE=$(echo "${CONFIG_JSON}" | jaq -r '.subprocess.max_turns_override // empty' 2>/dev/null) || true
   TIMEOUT_OVERRIDE=$(echo "${CONFIG_JSON}" | jaq -r '.subprocess.timeout_override // empty' 2>/dev/null) || true
   [[ -n "${HOOK_SUBPROCESS_TIMEOUT:-}" ]] && TIMEOUT_OVERRIDE="${HOOK_SUBPROCESS_TIMEOUT}"
@@ -218,7 +219,7 @@ load_model_patterns() {
   fi
 
   readonly HAIKU_CODE_PATTERN SONNET_CODE_PATTERN OPUS_CODE_PATTERN VOLUME_THRESHOLD
-  readonly GLOBAL_MODEL_OVERRIDE MAX_TURNS_OVERRIDE TIMEOUT_OVERRIDE
+  readonly CORRECTION_MODEL MAX_TURNS_OVERRIDE TIMEOUT_OVERRIDE
   readonly HAIKU_MAX_TURNS SONNET_MAX_TURNS OPUS_MAX_TURNS
   readonly HAIKU_TIMEOUT SONNET_TIMEOUT OPUS_TIMEOUT
   readonly HAIKU_TOOLS SONNET_TOOLS OPUS_TOOLS
@@ -432,7 +433,6 @@ run_mix_compile_warnings() {
   echo "${output}" | grep -E "^[^ ]+\.ex[s]?:[0-9]+:" || true
 }
 
-
 # Run mix deps.audit for hex package security vulnerabilities (session-scoped)
 run_deps_audit() {
   local root="$1"
@@ -465,15 +465,27 @@ detect_liveview_antipatterns() {
   local violations="[]"
 
   # Only check .ex files that use LiveView
-  [[ "${fp}" != *.ex ]] && { echo "[]"; return; }
-  grep -qE 'use\s+.*:live_view|use\s+.*LiveView' "${fp}" 2>/dev/null || { echo "[]"; return; }
+  [[ "${fp}" != *.ex ]] && {
+    echo "[]"
+    return
+  }
+  grep -qE 'use\s+.*:live_view|use\s+.*LiveView' "${fp}" 2>/dev/null || {
+    echo "[]"
+    return
+  }
 
   local file_content
-  file_content=$(cat "${fp}" 2>/dev/null) || { echo "[]"; return; }
+  file_content=$(cat "${fp}" 2>/dev/null) || {
+    echo "[]"
+    return
+  }
 
   local lv_enabled
   lv_enabled=$(get_elixir_config "liveview_checks" "true")
-  [[ "${lv_enabled}" == "false" ]] && { echo "[]"; return; }
+  [[ "${lv_enabled}" == "false" ]] && {
+    echo "[]"
+    return
+  }
 
   # 1. PubSub.subscribe without connected?/1 guard
   if echo "${file_content}" | grep -qE 'PubSub\.subscribe|Phoenix\.PubSub\.subscribe'; then
@@ -502,7 +514,7 @@ detect_liveview_antipatterns() {
       v=$(jaq -n --arg l "${ln}" \
         '{line:($l|tonumber),column:1,code:"LV_REPO_IN_LIVEVIEW",message:"Repo/Ecto query in LiveView assign. Move data access to a context module.",linter:"liveview-check"}') || true
       [[ -n "${v}" ]] && violations=$(echo "${violations}" "[${v}]" | jaq -s '.[0] + .[1]' 2>/dev/null) || true
-    done <<< "${repo_assign_lines}"
+    done <<<"${repo_assign_lines}"
   fi
 
   # 3. handle_event without pattern matching on params
@@ -520,7 +532,7 @@ detect_liveview_antipatterns() {
       v=$(jaq -n --arg l "${ln}" \
         '{line:($l|tonumber),column:1,code:"LV_GENERIC_EVENT_PARAMS",message:"handle_event/3 uses generic variable for params. Prefer pattern matching: def handle_event(\"name\", %{\"key\" => val}, socket)",linter:"liveview-check"}') || true
       [[ -n "${v}" ]] && violations=$(echo "${violations}" "[${v}]" | jaq -s '.[0] + .[1]' 2>/dev/null) || true
-    done <<< "${generic_events}"
+    done <<<"${generic_events}"
   fi
 
   # 4. Missing @impl true annotations on LiveView callbacks
@@ -544,7 +556,7 @@ detect_liveview_antipatterns() {
             '{line:($l|tonumber),column:1,code:"LV_MISSING_IMPL",message:("Missing @impl true before " + $cb + ". Add annotation for LiveView callbacks."),linter:"liveview-check"}') || true
           [[ -n "${v}" ]] && violations=$(echo "${violations}" "[${v}]" | jaq -s '.[0] + .[1]' 2>/dev/null) || true
         fi
-      done <<< "${cb_lines}"
+      done <<<"${cb_lines}"
     fi
   done
 
@@ -561,7 +573,7 @@ detect_liveview_antipatterns() {
       v=$(jaq -n --arg l "${ln}" \
         '{line:($l|tonumber),column:1,code:"LV_LIST_WITHOUT_STREAM",message:"List assigned directly to socket. For large/frequently-updated lists, consider stream/3 to minimize diff payloads.",linter:"liveview-check"}') || true
       [[ -n "${v}" ]] && violations=$(echo "${violations}" "[${v}]" | jaq -s '.[0] + .[1]' 2>/dev/null) || true
-    done <<< "${list_assigns}"
+    done <<<"${list_assigns}"
   fi
 
   # 6. Unused socket assigns (assign set but key not found in render/template)
@@ -583,7 +595,7 @@ detect_liveview_antipatterns() {
             '{line:($l|tonumber),column:1,code:"LV_UNUSED_ASSIGN",message:("Socket assign :" + $k + " is set but not referenced in render/1. Remove or use it."),linter:"liveview-check"}') || true
           [[ -n "${v}" ]] && violations=$(echo "${violations}" "[${v}]" | jaq -s '.[0] + .[1]' 2>/dev/null) || true
         fi
-      done <<< "${assign_keys}"
+      done <<<"${assign_keys}"
     fi
   fi
 
@@ -658,15 +670,18 @@ _delegate_pi() {
 
   local pi_cmd=""
   command -v pi >/dev/null 2>&1 && pi_cmd="pi"
-  [[ -z "${pi_cmd}" ]] && { echo "[hook:error] pi binary not found" >&2; return 0; }
+  [[ -z "${pi_cmd}" ]] && {
+    echo "[hook:error] pi binary not found" >&2
+    return 0
+  }
 
   local pi_model
   local anthropic_family="clau""de"
   case "${model}" in
-    haiku)  pi_model="anthropic/${anthropic_family}-haiku-4-5" ;;
+    haiku) pi_model="anthropic/${anthropic_family}-haiku-4-5" ;;
     sonnet) pi_model="anthropic/${anthropic_family}-sonnet-4-5" ;;
-    opus)   pi_model="anthropic/${anthropic_family}-opus-4" ;;
-    *)      pi_model="${model}" ;;
+    opus) pi_model="anthropic/${anthropic_family}-opus-4" ;;
+    *) pi_model="${model}" ;;
   esac
 
   # Map allowed tools: Pi's Edit,Read,Write -> Pi's edit,read,write
@@ -695,7 +710,6 @@ _delegate_pi() {
     echo "[hook:warning] pi subprocess failed (exit ${subprocess_exit})" >&2
   fi
 }
-
 
 delegate_with_agent() {
   local fp="$1" prompt="$2" model="$3" tier_tools="$4" tier_max_turns="$5" tier_timeout="$6"
@@ -742,9 +756,9 @@ spawn_fix_subprocess() {
   local tier_timeout=""
   local tier_tools=""
 
-  # Global model override skips all tier selection
-  if [[ -n "${GLOBAL_MODEL_OVERRIDE}" ]]; then
-    model="${GLOBAL_MODEL_OVERRIDE}"
+  # correction_model skips tier selection when configured.
+  if [[ -n "${CORRECTION_MODEL}" ]]; then
+    model="${CORRECTION_MODEL}"
   else
     # Check for opus-level codes
     local has_opus_codes="false"
@@ -771,7 +785,7 @@ spawn_fix_subprocess() {
   fi
 
   # Warn about violation codes that don't match any tier pattern
-  if [[ "${model}" == "haiku" ]] && [[ -z "${GLOBAL_MODEL_OVERRIDE}" ]]; then
+  if [[ "${model}" == "haiku" ]] && [[ -z "${CORRECTION_MODEL}" ]]; then
     local unmatched_codes
     unmatched_codes=$(echo "${prompt_violations_json}" | jaq -r '.[].code' 2>/dev/null | sort -u) || true
     while IFS= read -r code; do

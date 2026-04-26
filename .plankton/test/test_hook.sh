@@ -284,6 +284,54 @@ def foo():
     return 42' \
     "sonnet"
 
+  # correction_model overrides tier selection and is passed to Pi --model.
+  correction_project_dir="${temp_dir}/correction_project"
+  correction_bin_dir="${temp_dir}/correction_bin"
+  correction_args="${temp_dir}/correction_args.txt"
+  mkdir -p "${correction_project_dir}/.plankton/hooks" "${correction_bin_dir}"
+  cat >"${correction_project_dir}/.plankton/config.json" <<'CORRECTION_CFG_EOF'
+{
+  "languages": {"shell": true},
+  "phases": {"auto_format": false, "subprocess_delegation": true},
+  "subprocess": {
+    "delegate_cmd": "pi",
+    "correction_model": "gpt-5.4-mini",
+    "tiers": {
+      "haiku": {"patterns": "SC[0-9]+", "tools": "Edit,Read", "max_turns": 10, "timeout": 120}
+    }
+  }
+}
+CORRECTION_CFG_EOF
+  cat >"${correction_bin_dir}/pi" <<MOCK_PI_EOF
+#!/bin/bash
+printf '%s\n' "\$@" > "${correction_args}"
+exit 0
+MOCK_PI_EOF
+  chmod +x "${correction_bin_dir}/pi"
+  correction_file="${temp_dir}/correction.sh"
+  # shellcheck disable=SC2016 # Literal shell fixture should contain $y.
+  printf '#!/bin/bash\nunused="x"\necho $y\n' >"${correction_file}"
+  correction_json='{"tool_input":{"file_path":"'"${correction_file}"'"}}'
+  set +e
+  correction_stderr=$(echo "${correction_json}" \
+    | PATH="${correction_bin_dir}:${PATH}" \
+      PLANKTON_PROJECT_DIR="${correction_project_dir}" \
+      HOOK_SESSION_PID="correction_$$" \
+      HOOK_DEBUG_MODEL=1 \
+      "${hook_dir}/multi_linter.sh" 2>&1 >/dev/null)
+  set -e
+  if echo "${correction_stderr}" | grep -q '\[hook:model\] gpt-5.4-mini' \
+    && grep -q -- '--model' "${correction_args}" \
+    && grep -q 'gpt-5.4-mini' "${correction_args}"; then
+    echo "PASS correction_model override: model=gpt-5.4-mini"
+    passed=$((passed + 1))
+  else
+    echo "FAIL correction_model override: expected gpt-5.4-mini"
+    echo "   Stderr: ${correction_stderr}"
+    echo "   Args: $(cat "${correction_args}" 2>/dev/null || true)"
+    failed=$((failed + 1))
+  fi
+
   # TypeScript tests (gated on Biome availability)
   echo ""
   echo "--- TypeScript Tests ---"

@@ -60,7 +60,8 @@
   },
   "subprocess": {
     "settings_file": ".plankton/subprocess-settings.json",
-    "delegate_cmd": "pi"
+    "delegate_cmd": "pi",
+    "correction_model": "gpt-5.4-mini"
   },
   "jscpd": {
     "session_threshold": 3,
