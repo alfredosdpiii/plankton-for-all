@@ -27,13 +27,36 @@ bash scripts/setup.sh
 pi
 ```
 
-For another project:
+For another project using this repository checkout:
 
 ```bash
 bash /path/to/plankton-for-all/scripts/install-plankton.sh /path/to/project
 cd /path/to/project
 pi
 ```
+
+## Install as a Pi package
+
+Install the package from GitHub:
+
+```bash
+pi install git:github.com/alfredosdpiii/plankton-for-all
+```
+
+Install it for one project and commit `.pi/settings.json` for your team:
+
+```bash
+pi install -l git:github.com/alfredosdpiii/plankton-for-all
+```
+
+Try a local checkout without adding it to settings:
+
+```bash
+pi -e /path/to/plankton-for-all
+```
+
+The package manifest is in `package.json` under `pi.extensions`, and the npm
+package includes the extension plus its bundled hooks.
 
 ## Pi extension behavior
 
@@ -125,9 +148,10 @@ Auto initialization only runs when Plankton detects common project markers such
 as `.git`, `package.json`, `pyproject.toml`, `uv.lock`, `mix.exs`, `Cargo.toml`,
 or `go.mod`. This avoids creating `.plankton/` in arbitrary directories.
 
-## Global install
+## Manual global install
 
-Copy the extension directory into Pi's global extension directory:
+If you do not want to use `pi install`, copy the extension directory into Pi's
+global extension directory:
 
 ```bash
 mkdir -p ~/.pi/agent/extensions
