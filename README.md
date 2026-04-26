@@ -1,6 +1,6 @@
-# Plankton for All
+# Pi Plankton
 
-Plankton for All is a fork of the original
+Pi Plankton is a fork of the original
 [`alexfazio/plankton`](https://github.com/alexfazio/plankton) project. The
 original proved the useful idea: Pi can enforce code quality from inside the
 agent loop. This fork keeps that idea, but changes the product direction toward
@@ -8,7 +8,7 @@ a Pi-first package that can bootstrap itself in any project and keep runtime
 linting, Git hooks, and correction subprocesses consistent.
 
 This is not the upstream `alexfazio/plankton` repository. It is a maintained fork
-for the `alfredosdpiii/plankton-for-all` workflow.
+for the `alfredosdpiii/pi-plankton` workflow.
 
 ## Why this fork exists
 
@@ -44,19 +44,19 @@ are used as the fallback.
 Install globally for all Pi sessions:
 
 ```bash
-pi install git:github.com/alfredosdpiii/plankton-for-all
+pi install git:github.com/alfredosdpiii/pi-plankton
 ```
 
 Install for one project and commit `.pi/settings.json` for a team:
 
 ```bash
-pi install -l git:github.com/alfredosdpiii/plankton-for-all
+pi install -l git:github.com/alfredosdpiii/pi-plankton
 ```
 
 Try a local checkout without adding it to settings:
 
 ```bash
-pi -e /path/to/plankton-for-all
+pi -e /path/to/pi-plankton
 ```
 
 The package manifest lives in `package.json` under `pi.extensions`. The package
@@ -67,7 +67,7 @@ contains the TypeScript extension plus bundled hook scripts.
 To copy this checkout directly into another project:
 
 ```bash
-bash /path/to/plankton-for-all/scripts/install-plankton.sh /path/to/project
+bash /path/to/pi-plankton/scripts/install-plankton.sh /path/to/project
 cd /path/to/project
 pi
 ```

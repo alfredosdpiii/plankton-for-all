@@ -1,6 +1,5 @@
 {
-  "name": "plankton-pi",
-  "private": true,
+  "name": "pi-plankton-extension",
   "version": "1.0.0",
   "type": "module",
   "pi": {

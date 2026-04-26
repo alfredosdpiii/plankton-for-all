@@ -2,8 +2,8 @@
 # install-plankton.sh - Install Plankton linting enforcement into a Pi project.
 #
 # Usage:
-#   bash /path/to/plankton-for-all/scripts/install-plankton.sh /path/to/target-project
-#   bash /path/to/plankton-for-all/scripts/install-plankton.sh .
+#   bash /path/to/pi-plankton/scripts/install-plankton.sh /path/to/target-project
+#   bash /path/to/pi-plankton/scripts/install-plankton.sh .
 
 set -euo pipefail
 

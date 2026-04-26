@@ -1,11 +1,11 @@
 {
-  "name": "plankton-for-all",
+  "name": "pi-plankton",
   "version": "1.0.0",
   "type": "module",
   "author": "",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/alfredosdpiii/plankton-for-all.git"
+    "url": "git+https://github.com/alfredosdpiii/pi-plankton.git"
   },
   "originalRepository": "https://github.com/alexfazio/plankton",
   "main": ".pi/extensions/plankton/index.ts",
@@ -16,7 +16,7 @@
   ],
   "pi": {
     "extensions": [".pi/extensions/plankton"],
-    "image": "https://raw.githubusercontent.com/alfredosdpiii/plankton-for-all/main/assets/plankton-cover.png"
+    "image": "https://raw.githubusercontent.com/alfredosdpiii/pi-plankton/main/assets/plankton-cover.png"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.15",
@@ -28,14 +28,14 @@
     "typescript": "^5.9.3"
   },
   "bugs": {
-    "url": "https://github.com/alfredosdpiii/plankton-for-all/issues"
+    "url": "https://github.com/alfredosdpiii/pi-plankton/issues"
   },
   "description": "A fork of alexfazio/plankton that provides a Pi-exclusive extension for root-aware code quality enforcement.",
   "directories": {
     "doc": "docs",
     "test": "tests"
   },
-  "homepage": "https://github.com/alfredosdpiii/plankton-for-all#readme",
+  "homepage": "https://github.com/alfredosdpiii/pi-plankton#readme",
   "keywords": [
     "pi-package",
     "pi",
