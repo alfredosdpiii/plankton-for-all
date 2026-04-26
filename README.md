@@ -133,6 +133,8 @@ printf '%s' '{"tool_input":{"file_path":".ruff.toml"}}' \
 
 printf '%s' '{"tool_input":{"command":"pip install requests"}}' \
   | PLANKTON_PROJECT_DIR="$PWD" bash .plankton/hooks/enforce_package_managers.sh
+
+bash .plankton/hooks/git_pre_commit.sh
 ```
 
 ## Auto initialization
@@ -143,10 +145,15 @@ minimal project-local setup:
 - `.plankton/config.json`
 - `.plankton/hooks/*.sh`
 - `.plankton/subprocess-settings.json`
+- `.git/hooks/pre-commit` and `.git/hooks/commit-msg` when the project is a Git
+  repository and those hooks are absent or already Plankton-managed
 
 Auto initialization only runs when Plankton detects common project markers such
 as `.git`, `package.json`, `pyproject.toml`, `uv.lock`, `mix.exs`, `Cargo.toml`,
 or `go.mod`. This avoids creating `.plankton/` in arbitrary directories.
+
+Plankton does not overwrite existing custom Git hooks. Set `PLANKTON_GIT_HOOKS=0`
+to bypass the managed Git hooks temporarily.
 
 ## Manual global install
 

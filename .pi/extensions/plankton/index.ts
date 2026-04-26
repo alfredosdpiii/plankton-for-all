@@ -55,7 +55,10 @@ export default function (pi: ExtensionAPI) {
     state.reconstruct(ctx);
     const context = await resolvePlanktonContext(ctx.cwd);
     if (context.initialized && ctx.hasUI) {
-      ctx.ui.notify(`Plankton initialized at ${context.configPath}`, "info");
+      const gitHookSuffix = context.gitHooksInstalled?.length
+        ? ` Git hooks: ${context.gitHooksInstalled.join(", ")}.`
+        : "";
+      ctx.ui.notify(`Plankton initialized at ${context.configPath}.${gitHookSuffix}`, "info");
     }
   });
 

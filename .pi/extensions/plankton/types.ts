@@ -5,6 +5,8 @@ export interface PlanktonContext {
   bundledHooksDir: string;
   noOp: boolean;
   initialized?: boolean;
+  gitHooksInstalled?: string[];
+  gitHooksSkipped?: string[];
 }
 
 export interface PlanktonConfig {

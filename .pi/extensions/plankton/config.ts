@@ -1,4 +1,4 @@
-import { access, chmod, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, chmod, copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { LoadedPlanktonConfig, PlanktonConfig, PlanktonContext } from "./types.js";
@@ -8,7 +8,13 @@ let warnedLegacyDelegate = false;
 
 const extensionDir = dirname(fileURLToPath(import.meta.url));
 const bundledHooksDir = join(extensionDir, "hooks");
-const bundledHookNames = ["multi_linter.sh", "protect_linter_configs.sh", "enforce_package_managers.sh"] as const;
+const bundledHookNames = [
+  "multi_linter.sh",
+  "protect_linter_configs.sh",
+  "enforce_package_managers.sh",
+  "git_pre_commit.sh",
+  "git_commit_msg.sh",
+] as const;
 const autoInitProjectMarkers = [
   ".git",
   "package.json",
@@ -111,6 +117,12 @@ const defaultSubprocessSettings = {
   },
 };
 
+const gitHookMarker = "Plankton-managed Git hook";
+const managedGitHooks = {
+  "pre-commit": "git_pre_commit.sh",
+  "commit-msg": "git_commit_msg.sh",
+} as const;
+
 async function fileExists(path: string): Promise<boolean> {
   try {
     await access(path);
@@ -165,7 +177,64 @@ async function copyBundledHooks(projectHooksDir: string): Promise<void> {
   }
 }
 
-async function initializePlanktonProject(root: string): Promise<{ root: string; configPath: string }> {
+async function resolveGitHooksDir(root: string): Promise<string | undefined> {
+  const gitPath = join(root, ".git");
+  let gitStat;
+  try {
+    gitStat = await stat(gitPath);
+  } catch {
+    return undefined;
+  }
+
+  if (gitStat.isDirectory()) return join(gitPath, "hooks");
+  if (!gitStat.isFile()) return undefined;
+
+  const raw = await readFile(gitPath, "utf8").catch(() => "");
+  const match = raw.match(/^gitdir:\s*(.+)$/m);
+  if (!match?.[1]) return undefined;
+
+  return join(resolve(root, match[1].trim()), "hooks");
+}
+
+function gitHookWrapper(scriptName: string): string {
+  return `#!/usr/bin/env bash
+# ${gitHookMarker}. Set PLANKTON_GIT_HOOKS=0 to bypass temporarily.
+set -euo pipefail
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+exec bash "\${repo_root}/.plankton/hooks/${scriptName}" "$@"
+`;
+}
+
+async function installManagedGitHooks(root: string): Promise<{ installed: string[]; skipped: string[] }> {
+  const hooksDir = await resolveGitHooksDir(root);
+  const result = { installed: [] as string[], skipped: [] as string[] };
+  if (!hooksDir) return result;
+
+  await mkdir(hooksDir, { recursive: true });
+  for (const [gitHookName, scriptName] of Object.entries(managedGitHooks)) {
+    const target = join(hooksDir, gitHookName);
+    if (await fileExists(target)) {
+      const existing = await readFile(target, "utf8").catch(() => "");
+      if (!existing.includes(gitHookMarker)) {
+        result.skipped.push(gitHookName);
+        continue;
+      }
+    }
+
+    await writeFile(target, gitHookWrapper(scriptName), "utf8");
+    await chmod(target, 0o755);
+    result.installed.push(gitHookName);
+  }
+
+  return result;
+}
+
+async function initializePlanktonProject(root: string): Promise<{
+  root: string;
+  configPath: string;
+  gitHooksInstalled: string[];
+  gitHooksSkipped: string[];
+}> {
   const planktonDir = join(root, ".plankton");
   const projectHooksDir = join(planktonDir, "hooks");
   const configPath = join(planktonDir, "config.json");
@@ -174,8 +243,14 @@ async function initializePlanktonProject(root: string): Promise<{ root: string; 
   await copyBundledHooks(projectHooksDir);
   await writeJsonIfMissing(configPath, defaultPlanktonConfig);
   await writeJsonIfMissing(join(planktonDir, "subprocess-settings.json"), defaultSubprocessSettings);
+  const gitHooks = await installManagedGitHooks(root);
 
-  return { root, configPath };
+  return {
+    root,
+    configPath,
+    gitHooksInstalled: gitHooks.installed,
+    gitHooksSkipped: gitHooks.skipped,
+  };
 }
 
 export async function resolvePlanktonContext(cwd: string): Promise<PlanktonContext> {
@@ -184,12 +259,17 @@ export async function resolvePlanktonContext(cwd: string): Promise<PlanktonConte
   if (cached) return cached;
 
   let initialized = false;
+  let gitHooksInstalled: string[] = [];
+  let gitHooksSkipped: string[] = [];
   let found = await findProjectRoot(cwd);
   if (!found) {
     const autoInitRoot = await findAutoInitRoot(cwd);
     if (autoInitRoot) {
-      found = await initializePlanktonProject(autoInitRoot);
+      const initializedProject = await initializePlanktonProject(autoInitRoot);
+      found = initializedProject;
       initialized = true;
+      gitHooksInstalled = initializedProject.gitHooksInstalled;
+      gitHooksSkipped = initializedProject.gitHooksSkipped;
     }
   }
 
@@ -201,6 +281,8 @@ export async function resolvePlanktonContext(cwd: string): Promise<PlanktonConte
     bundledHooksDir,
     noOp: found === undefined,
     initialized,
+    gitHooksInstalled,
+    gitHooksSkipped,
   };
 
   contextCache.set(key, context);
@@ -347,12 +429,16 @@ export function formatConfigSummary(context: PlanktonContext, config: PlanktonCo
   const protectedCount = Array.isArray(config.protected_files) ? config.protected_files.length : 0;
   const packageManagers = isObject(config.package_managers) ? config.package_managers : {};
   const subprocess = isObject(config.subprocess) ? config.subprocess : {};
+  const installedGitHooks = context.gitHooksInstalled?.join(", ") || "none";
+  const skippedGitHooks = context.gitHooksSkipped?.join(", ") || "none";
 
   return [
     "Plankton status",
     `Root: ${context.root}`,
     `Config: ${context.configPath ?? "not found (inactive; no project marker)"}`,
     `Auto-initialized: ${context.initialized ? "yes" : "no"}`,
+    `Git hooks installed: ${installedGitHooks}`,
+    `Git hooks skipped: ${skippedGitHooks}`,
     `Project hooks: ${context.projectHooksDir}`,
     `Bundled hooks: ${context.bundledHooksDir}`,
     `Enabled languages: ${languages.length > 0 ? languages.join(", ") : "none"}`,

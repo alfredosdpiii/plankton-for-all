@@ -33,7 +33,7 @@ mkdir -p "${TARGET}/.pi/extensions" "${TARGET}/.plankton/hooks" "${TARGET}/.plan
 cp -a "${PLANKTON_ROOT}/.pi/extensions/plankton" "${TARGET}/.pi/extensions/"
 echo "  .pi/extensions/plankton/"
 
-for hook in multi_linter.sh protect_linter_configs.sh enforce_package_managers.sh; do
+for hook in multi_linter.sh protect_linter_configs.sh enforce_package_managers.sh git_pre_commit.sh git_commit_msg.sh; do
   cp "${PLANKTON_ROOT}/.plankton/hooks/${hook}" "${TARGET}/.plankton/hooks/${hook}"
   chmod +x "${TARGET}/.plankton/hooks/${hook}"
   echo "  .plankton/hooks/${hook}"
@@ -88,6 +88,35 @@ Elixir config is structured like TypeScript:
 }
 ```
 EOF
+
+GIT_HOOK_MARKER="Plankton-managed Git hook"
+install_git_hook() {
+  local hook_name="$1"
+  local runner_name="$2"
+  local hooks_dir="${TARGET}/.git/hooks"
+  local hook_path="${hooks_dir}/${hook_name}"
+
+  [[ -d "${TARGET}/.git" ]] || return 0
+  mkdir -p "${hooks_dir}"
+
+  if [[ -f "${hook_path}" ]] && ! grep -qF "${GIT_HOOK_MARKER}" "${hook_path}"; then
+    echo "  .git/hooks/${hook_name} exists (skipped; not Plankton-managed)"
+    return 0
+  fi
+
+  cat >"${hook_path}" <<EOF_HOOK
+#!/usr/bin/env bash
+# ${GIT_HOOK_MARKER}. Set PLANKTON_GIT_HOOKS=0 to bypass temporarily.
+set -euo pipefail
+repo_root=\$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+exec bash "\${repo_root}/.plankton/hooks/${runner_name}" "\$@"
+EOF_HOOK
+  chmod +x "${hook_path}"
+  echo "  .git/hooks/${hook_name}"
+}
+
+install_git_hook "pre-commit" "git_pre_commit.sh"
+install_git_hook "commit-msg" "git_commit_msg.sh"
 
 if [[ -f "${AGENTS_FILE}" ]]; then
   if grep -qF "${PLANKTON_MARKER}" "${AGENTS_FILE}"; then
