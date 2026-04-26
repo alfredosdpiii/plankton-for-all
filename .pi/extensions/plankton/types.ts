@@ -4,6 +4,7 @@ export interface PlanktonContext {
   projectHooksDir: string;
   bundledHooksDir: string;
   noOp: boolean;
+  initialized?: boolean;
 }
 
 export interface PlanktonConfig {

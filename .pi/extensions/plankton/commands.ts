@@ -64,7 +64,7 @@ export function registerPlanktonCommands(pi: ExtensionAPI, state: PlanktonState)
 
       const context = await resolvePlanktonContext(ctx.cwd);
       if (context.noOp) {
-        sendText(pi, "No .plankton/config.json found; Plankton is inactive.", ctx);
+        sendText(pi, "No project marker found; Plankton was not auto-initialized.", ctx);
         return;
       }
 
@@ -101,7 +101,7 @@ export function registerPlanktonCommands(pi: ExtensionAPI, state: PlanktonState)
 
       const context = await resolvePlanktonContext(ctx.cwd);
       if (context.noOp || !context.configPath) {
-        sendText(pi, "No .plankton/config.json found; Plankton is inactive.", ctx);
+        sendText(pi, "No project marker found; Plankton was not auto-initialized.", ctx);
         return;
       }
 

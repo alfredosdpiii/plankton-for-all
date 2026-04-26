@@ -34,7 +34,7 @@ export function registerPlanktonTools(pi: ExtensionAPI, state: PlanktonState): v
     }, { additionalProperties: false }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const context = await resolvePlanktonContext(ctx.cwd);
-      if (context.noOp) return textResult("No .plankton/config.json found; Plankton is inactive.", { clean: true });
+      if (context.noOp) return textResult("No project marker found; Plankton was not auto-initialized.", { clean: true });
 
       const { config } = await loadPlanktonConfig(context);
       const absPath = normalizePath(ctx.cwd, params.path);
@@ -82,7 +82,7 @@ export function registerPlanktonTools(pi: ExtensionAPI, state: PlanktonState): v
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const context = await resolvePlanktonContext(ctx.cwd);
       if (context.noOp || !context.configPath) {
-        return textResult("No .plankton/config.json found; Plankton is inactive.");
+        return textResult("No project marker found; Plankton was not auto-initialized.");
       }
 
       if (params.action === "get") {

@@ -53,6 +53,10 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     state.reconstruct(ctx);
+    const context = await resolvePlanktonContext(ctx.cwd);
+    if (context.initialized && ctx.hasUI) {
+      ctx.ui.notify(`Plankton initialized at ${context.configPath}`, "info");
+    }
   });
 
   pi.on("session_tree", async (_event, ctx) => {

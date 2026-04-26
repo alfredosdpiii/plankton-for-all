@@ -1,4 +1,4 @@
-import { access, readFile, writeFile } from "node:fs/promises";
+import { access, chmod, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { LoadedPlanktonConfig, PlanktonConfig, PlanktonContext } from "./types.js";
@@ -8,6 +8,108 @@ let warnedLegacyDelegate = false;
 
 const extensionDir = dirname(fileURLToPath(import.meta.url));
 const bundledHooksDir = join(extensionDir, "hooks");
+const bundledHookNames = ["multi_linter.sh", "protect_linter_configs.sh", "enforce_package_managers.sh"] as const;
+const autoInitProjectMarkers = [
+  ".git",
+  "package.json",
+  "pyproject.toml",
+  "uv.lock",
+  "mix.exs",
+  "Cargo.toml",
+  "go.mod",
+  "deno.json",
+  "bun.lock",
+  "bun.lockb",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "package-lock.json",
+] as const;
+
+const defaultPlanktonConfig = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  _comment: "Plankton Pi Hooks Configuration - edit this file to customize hook behavior",
+  languages: {
+    python: true,
+    elixir: {
+      enabled: true,
+      sobelow: true,
+      mix_compile_warnings: false,
+      liveview_checks: true,
+      deps_audit: true,
+      xref_warnings: true,
+      credo: true,
+    },
+    shell: true,
+    yaml: true,
+    json: true,
+    toml: true,
+    dockerfile: true,
+    markdown: true,
+    typescript: {
+      enabled: true,
+      js_runtime: "auto",
+      biome_nursery: "warn",
+      biome_unsafe_autofix: true,
+      oxlint_tsgolint: true,
+      tsgo: false,
+      semgrep: true,
+      knip: false,
+    },
+  },
+  protected_files: [
+    ".markdownlint.jsonc",
+    ".markdownlint-cli2.jsonc",
+    ".shellcheckrc",
+    ".yamllint",
+    ".hadolint.yaml",
+    ".jscpd.json",
+    ".flake8",
+    "taplo.toml",
+    ".ruff.toml",
+    "biome.json",
+    ".oxlintrc.json",
+    "ty.toml",
+    ".semgrep.yml",
+    "knip.json",
+    ".formatter.exs",
+    ".credo.exs",
+    ".sobelow-conf",
+    ".sobelow-skips",
+  ],
+  security_linter_exclusions: [".venv/", "node_modules/", ".git/"],
+  phases: {
+    auto_format: true,
+    subprocess_delegation: true,
+  },
+  subprocess: {
+    settings_file: ".plankton/subprocess-settings.json",
+    delegate_cmd: "pi",
+  },
+  jscpd: {
+    session_threshold: 3,
+    scan_dirs: ["src/", "lib/"],
+    advisory_only: true,
+  },
+  package_managers: {
+    python: "uv",
+    javascript: "bun",
+    allowed_subcommands: {
+      npm: ["audit", "view", "pack", "publish", "whoami", "login"],
+      pip: ["download"],
+      yarn: ["audit", "info"],
+      pnpm: ["audit", "info"],
+      poetry: [],
+      pipenv: [],
+    },
+  },
+  tested_version: "2.1.50",
+} satisfies PlanktonConfig;
+
+const defaultSubprocessSettings = {
+  plankton: {
+    subprocess_isolated: true,
+  },
+};
 
 async function fileExists(path: string): Promise<boolean> {
   try {
@@ -30,12 +132,67 @@ async function findProjectRoot(cwd: string): Promise<{ root: string; configPath:
   }
 }
 
+async function hasProjectMarker(directory: string): Promise<boolean> {
+  for (const marker of autoInitProjectMarkers) {
+    if (await fileExists(join(directory, marker))) return true;
+  }
+  return false;
+}
+
+async function findAutoInitRoot(cwd: string): Promise<string | undefined> {
+  let current = resolve(cwd);
+  while (true) {
+    if (await hasProjectMarker(current)) return current;
+
+    const parent = dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}
+
+async function writeJsonIfMissing(path: string, value: unknown): Promise<void> {
+  if (await fileExists(path)) return;
+  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+async function copyBundledHooks(projectHooksDir: string): Promise<void> {
+  await mkdir(projectHooksDir, { recursive: true });
+  for (const hookName of bundledHookNames) {
+    const target = join(projectHooksDir, hookName);
+    if (await fileExists(target)) continue;
+    await copyFile(join(bundledHooksDir, hookName), target);
+    await chmod(target, 0o755);
+  }
+}
+
+async function initializePlanktonProject(root: string): Promise<{ root: string; configPath: string }> {
+  const planktonDir = join(root, ".plankton");
+  const projectHooksDir = join(planktonDir, "hooks");
+  const configPath = join(planktonDir, "config.json");
+
+  await mkdir(planktonDir, { recursive: true });
+  await copyBundledHooks(projectHooksDir);
+  await writeJsonIfMissing(configPath, defaultPlanktonConfig);
+  await writeJsonIfMissing(join(planktonDir, "subprocess-settings.json"), defaultSubprocessSettings);
+
+  return { root, configPath };
+}
+
 export async function resolvePlanktonContext(cwd: string): Promise<PlanktonContext> {
   const key = resolve(cwd);
   const cached = contextCache.get(key);
   if (cached) return cached;
 
-  const found = await findProjectRoot(cwd);
+  let initialized = false;
+  let found = await findProjectRoot(cwd);
+  if (!found) {
+    const autoInitRoot = await findAutoInitRoot(cwd);
+    if (autoInitRoot) {
+      found = await initializePlanktonProject(autoInitRoot);
+      initialized = true;
+    }
+  }
+
   const root = found?.root ?? key;
   const context: PlanktonContext = {
     root,
@@ -43,6 +200,7 @@ export async function resolvePlanktonContext(cwd: string): Promise<PlanktonConte
     projectHooksDir: join(root, ".plankton", "hooks"),
     bundledHooksDir,
     noOp: found === undefined,
+    initialized,
   };
 
   contextCache.set(key, context);
@@ -193,7 +351,8 @@ export function formatConfigSummary(context: PlanktonContext, config: PlanktonCo
   return [
     "Plankton status",
     `Root: ${context.root}`,
-    `Config: ${context.configPath ?? "not found (no-op)"}`,
+    `Config: ${context.configPath ?? "not found (inactive; no project marker)"}`,
+    `Auto-initialized: ${context.initialized ? "yes" : "no"}`,
     `Project hooks: ${context.projectHooksDir}`,
     `Bundled hooks: ${context.bundledHooksDir}`,
     `Enabled languages: ${languages.length > 0 ? languages.join(", ") : "none"}`,

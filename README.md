@@ -38,7 +38,9 @@ pi
 ## Pi extension behavior
 
 The extension discovers `.plankton/config.json` by walking upward from Pi's
-current working directory. If no config is found, it stays in no-op mode.
+current working directory. If no config is found but the current directory is
+inside a recognizable project, Plankton automatically initializes `.plankton/`
+at the project root with default config, hooks, and subprocess settings.
 
 During Pi tool execution:
 
@@ -95,6 +97,7 @@ become `pi`; unknown values become `none`.
 
 ```bash
 bunx tsc --project tsconfig.extensions.json
+bash .plankton/test/test_auto_init.sh
 bash .plankton/test/test_hook.sh --self-test
 uv run pytest
 ```
@@ -108,6 +111,19 @@ printf '%s' '{"tool_input":{"file_path":".ruff.toml"}}' \
 printf '%s' '{"tool_input":{"command":"pip install requests"}}' \
   | PLANKTON_PROJECT_DIR="$PWD" bash .plankton/hooks/enforce_package_managers.sh
 ```
+
+## Auto initialization
+
+When the global extension starts in a project without `.plankton/`, it creates a
+minimal project-local setup:
+
+- `.plankton/config.json`
+- `.plankton/hooks/*.sh`
+- `.plankton/subprocess-settings.json`
+
+Auto initialization only runs when Plankton detects common project markers such
+as `.git`, `package.json`, `pyproject.toml`, `uv.lock`, `mix.exs`, `Cargo.toml`,
+or `go.mod`. This avoids creating `.plankton/` in arbitrary directories.
 
 ## Global install
 
