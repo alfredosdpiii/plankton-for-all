@@ -14,8 +14,10 @@ modifications to protected config files.
 
 ## Elixir/Phoenix enforcement
 
-Phoenix projects get additional checks beyond `mix format` and Credo:
+Phoenix projects get additional checks beyond `mix format`:
 
+- **Credo** (`credo: true`): Static code analysis for consistency, design,
+  readability, and refactoring opportunities. Runs per file.
 - **Sobelow** (`sobelow: true`): Phoenix-specific security scanner. Catches XSS,
   SQL injection, CSRF bypass, hardcoded secrets, directory traversal. Runs once
   per session on first Elixir file edit (project-level scan).
@@ -27,6 +29,7 @@ Elixir config is structured like TypeScript:
 ```json
 "elixir": {
   "enabled": true,
+  "credo": true,
   "sobelow": true,
   "mix_compile_warnings": false
 }

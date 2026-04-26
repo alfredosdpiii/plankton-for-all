@@ -9,7 +9,8 @@
       "mix_compile_warnings": false,
       "liveview_checks": true,
       "deps_audit": true,
-      "xref_warnings": true
+      "xref_warnings": true,
+      "credo": true
     },
     "shell": true,
     "yaml": true,

@@ -1130,7 +1130,9 @@ rerun_phase2() {
             all_codes="MIX_FORMAT"
           fi
 
-          if is_elixir_source_file "${fp}" && mix_task_available "${mix_root}" "credo"; then
+          local credo_enabled
+          credo_enabled=$(get_elixir_config "credo" "true")
+          if [[ "${credo_enabled}" != "false" ]] && is_elixir_source_file "${fp}" && mix_task_available "${mix_root}" "credo"; then
             local credo_out
             credo_out=$(run_mix_credo_json "${mix_root}" "${rel_path}")
             local credo_count
@@ -1760,7 +1762,8 @@ case "${file_path}" in
       fi
     fi
 
-    if is_elixir_source_file "${file_path}" && command -v mix >/dev/null 2>&1 \
+    credo_enabled=$(get_elixir_config "credo" "true")
+    if [[ "${credo_enabled}" != "false" ]] && is_elixir_source_file "${file_path}" && command -v mix >/dev/null 2>&1 \
       && [[ -n "${mix_root}" ]] && mix_task_available "${mix_root}" "credo"; then
       credo_output=$(run_mix_credo_json "${mix_root}" "${mix_rel_path}")
       credo_converted=$(echo "${credo_output}" | jaq '[.explanations[]? | {
