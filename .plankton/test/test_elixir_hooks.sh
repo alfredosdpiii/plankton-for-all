@@ -205,6 +205,243 @@ else
 fi
 
 echo ""
+echo "--- Config Getter False-Preservation Regression ---"
+
+extract_hook_function() {
+  local fn="$1"
+  awk -v fn="${fn}" '
+    $0 == fn "() {" { printing=1 }
+    printing { print }
+    printing && $0 == "}" { printing=0 }
+  ' "${HOOKS_DIR}/multi_linter.sh"
+}
+
+helper_file=$(mktemp)
+for fn in get_language_config_value get_ts_config get_elixir_config is_elixir_enabled; do
+  extract_hook_function "${fn}" >>"${helper_file}"
+  printf '\n' >>"${helper_file}"
+done
+# shellcheck source=/dev/null
+source "${helper_file}"
+rm -f "${helper_file}"
+
+assert_elixir_enabled_status() {
+  local name="$1" config="$2" expected_rc="$3" rc
+  export CONFIG_JSON="${config}"
+  if is_elixir_enabled; then
+    rc=0
+  else
+    rc=$?
+  fi
+
+  if [[ "${rc}" -eq "${expected_rc}" ]]; then
+    pass "${name}"
+  else
+    fail "${name}" "Expected return ${expected_rc}, got ${rc}"
+  fi
+}
+
+assert_elixir_config_value() {
+  local name="$1" config="$2" key="$3" default="$4" expected="$5" actual
+  export CONFIG_JSON="${config}"
+  actual=$(get_elixir_config "${key}" "${default}")
+  if [[ "${actual}" == "${expected}" ]]; then
+    pass "${name}"
+  else
+    fail "${name}" "Expected ${expected}, got ${actual}"
+  fi
+}
+
+assert_ts_config_value() {
+  local name="$1" config="$2" key="$3" default="$4" expected="$5" actual
+  export CONFIG_JSON="${config}"
+  actual=$(get_ts_config "${key}" "${default}")
+  if [[ "${actual}" == "${expected}" ]]; then
+    pass "${name}"
+  else
+    fail "${name}" "Expected ${expected}, got ${actual}"
+  fi
+}
+
+assert_elixir_enabled_status \
+  "Elixir enabled=false disables language" \
+  '{"languages":{"elixir":{"enabled":false}}}' \
+  1
+assert_elixir_enabled_status \
+  "Elixir enabled=true enables language" \
+  '{"languages":{"elixir":{"enabled":true}}}' \
+  0
+assert_elixir_config_value \
+  "Elixir credo=false is preserved" \
+  '{"languages":{"elixir":{"credo":false}}}' \
+  "credo" "true" "false"
+assert_elixir_config_value \
+  "Elixir credo=true is preserved" \
+  '{"languages":{"elixir":{"credo":true}}}' \
+  "credo" "true" "true"
+assert_elixir_config_value \
+  "Elixir missing credo uses default" \
+  '{"languages":{"elixir":{}}}' \
+  "credo" "true" "true"
+assert_elixir_config_value \
+  "Elixir sobelow=false is preserved" \
+  '{"languages":{"elixir":{"sobelow":false}}}' \
+  "sobelow" "true" "false"
+assert_elixir_config_value \
+  "Elixir credo=null uses default" \
+  '{"languages":{"elixir":{"credo":null}}}' \
+  "credo" "true" "true"
+assert_elixir_config_value \
+  "Legacy scalar Elixir config uses default" \
+  '{"languages":{"elixir":true}}' \
+  "credo" "true" "true"
+assert_ts_config_value \
+  "TypeScript semgrep=false is preserved" \
+  '{"languages":{"typescript":{"semgrep":false}}}' \
+  "semgrep" "true" "false"
+assert_ts_config_value \
+  "TypeScript biome_nursery string is preserved" \
+  '{"languages":{"typescript":{"biome_nursery":"error"}}}' \
+  "biome_nursery" "off" "error"
+assert_ts_config_value \
+  "TypeScript js_runtime string is preserved" \
+  '{"languages":{"typescript":{"js_runtime":"bun"}}}' \
+  "js_runtime" "node" "bun"
+assert_ts_config_value \
+  "TypeScript missing semgrep uses default" \
+  '{"languages":{"typescript":{}}}' \
+  "semgrep" "true" "true"
+
+echo ""
+echo "--- Credo Toggle Integration (fake mix) ---"
+
+setup_fake_mix_project() {
+  local project="$1" fake_bin="$2"
+  mkdir -p "${project}/lib" "${fake_bin}"
+  cat >"${project}/mix.exs" <<'EOF'
+defmodule PlanktonFake.MixProject do
+  use Mix.Project
+
+  def project do
+    [app: :plankton_fake, version: "0.1.0"]
+  end
+end
+EOF
+  cat >"${project}/lib/example.ex" <<'EOF'
+defmodule PlanktonFake.Example do
+  def hello do
+    :world
+  end
+end
+EOF
+  cat >"${fake_bin}/mix" <<'EOF'
+#!/usr/bin/env bash
+if [[ -n "${MIX_LOG:-}" ]]; then
+  echo "mix $*" >>"${MIX_LOG}"
+fi
+
+case "$1" in
+  help)
+    exit 0
+    ;;
+  credo)
+    printf '{"explanations":[]}\n'
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+EOF
+  chmod +x "${fake_bin}/mix"
+}
+
+write_credo_config() {
+  local config_file="$1" credo_state="$2" enabled="$3" credo_line=""
+  case "${credo_state}" in
+    true | false) credo_line="\"credo\": ${credo_state}," ;;
+    missing) credo_line="" ;;
+    *) fail "Invalid fake Credo state" "${credo_state}" ;;
+  esac
+
+  cat >"${config_file}" <<EOF
+{
+  "phases": {"auto_format": false, "subprocess_delegation": false},
+  "languages": {
+    "elixir": {
+      "enabled": ${enabled},
+      ${credo_line}
+      "sobelow": false,
+      "deps_audit": false,
+      "xref_warnings": false,
+      "mix_compile_warnings": false,
+      "liveview_checks": false
+    }
+  }
+}
+EOF
+}
+
+run_credo_toggle_case() {
+  local name="$1" credo_state="$2" enabled="$3" expectation="$4"
+  local tmp_dir project fake_bin config_file mix_log source_file hook_input output session_id log_output
+
+  tmp_dir=$(mktemp -d)
+  project="${tmp_dir}/project"
+  fake_bin="${tmp_dir}/bin"
+  config_file="${tmp_dir}/config.json"
+  mix_log="${tmp_dir}/mix.log"
+  setup_fake_mix_project "${project}" "${fake_bin}"
+  write_credo_config "${config_file}" "${credo_state}" "${enabled}"
+
+  source_file="${project}/lib/example.ex"
+  hook_input=$(jaq -n --arg f "${source_file}" "{tool_name:\"Write\",tool_input:{file_path:\$f}}")
+  session_id="test_elixir_${RANDOM}_${total_count}"
+  output=$(PATH="${fake_bin}:${PATH}" \
+    MIX_LOG="${mix_log}" \
+    HOOK_SKIP_SUBPROCESS=1 \
+    HOOK_SESSION_PID="${session_id}" \
+    PLANKTON_CONFIG="${config_file}" \
+    PLANKTON_PROJECT_DIR="${project}" \
+    bash "${HOOKS_DIR}/multi_linter.sh" <<<"${hook_input}" 2>&1) || true
+  log_output="$(cat "${mix_log}" 2>/dev/null || true)"
+
+  case "${expectation}" in
+    no_credo)
+      if grep -q "mix credo" <<<"${log_output}"; then
+        fail "${name}" "Unexpected mix credo invocation. Log: ${log_output}. Output: ${output:0:200}"
+      else
+        pass "${name}"
+      fi
+      ;;
+    credo)
+      if grep -q "mix credo --strict --format json" <<<"${log_output}"; then
+        pass "${name}"
+      else
+        fail "${name}" "Expected mix credo invocation. Log: ${log_output}. Output: ${output:0:200}"
+      fi
+      ;;
+    no_mix)
+      if [[ -z "${log_output}" ]]; then
+        pass "${name}"
+      else
+        fail "${name}" "Expected no mix invocations. Log: ${log_output}. Output: ${output:0:200}"
+      fi
+      ;;
+    *)
+      fail "${name}" "Unknown expectation: ${expectation}"
+      ;;
+  esac
+
+  rm -rf "${tmp_dir}"
+}
+
+run_credo_toggle_case "Credo false skips mix credo" "false" "true" "no_credo"
+run_credo_toggle_case "Credo true runs mix credo" "true" "true" "credo"
+run_credo_toggle_case "Missing Credo key defaults to enabled" "missing" "true" "credo"
+run_credo_toggle_case "Elixir enabled=false skips all mix calls" "missing" "false" "no_mix"
+
+echo ""
 echo "=== Results: ${pass_count} passed, ${fail_count} failed, ${total_count} total ==="
 
 if [[ ${fail_count} -gt 0 ]]; then

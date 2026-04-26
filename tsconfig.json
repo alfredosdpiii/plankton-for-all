@@ -8,6 +8,6 @@
     "skipLibCheck": true,
     "outDir": "dist"
   },
-  "include": ["src"],
+  "include": [".pi/extensions/**/*.ts", "src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

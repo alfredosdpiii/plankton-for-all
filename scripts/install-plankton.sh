@@ -64,6 +64,29 @@ modifications to protected config files.
 - Use `uv` for Python package work.
 - Use `bun` for JavaScript package work.
 - Configuration lives in `.plankton/config.json`.
+
+## Elixir/Phoenix enforcement
+
+Phoenix projects get additional checks beyond `mix format`:
+
+- **Credo** (`credo: true`): Static code analysis for consistency, design,
+  readability, and refactoring opportunities. Runs per file.
+- **Sobelow** (`sobelow: true`): Phoenix-specific security scanner. Catches XSS,
+  SQL injection, CSRF bypass, hardcoded secrets, directory traversal. Runs once
+  per session on first Elixir file edit (project-level scan).
+- **Compile warnings** (`mix_compile_warnings: false`): Runs `mix compile
+  --warnings-as-errors`. Catches unused variables, missing functions, deprecated
+  calls. Off by default (can be slow on large projects).
+
+Elixir config is structured like TypeScript:
+```json
+"elixir": {
+  "enabled": true,
+  "credo": true,
+  "sobelow": true,
+  "mix_compile_warnings": false
+}
+```
 EOF
 
 if [[ -f "${AGENTS_FILE}" ]]; then

@@ -253,11 +253,26 @@ is_typescript_enabled() {
   esac
 }
 
+# get_language_config_value: read a language-specific config value, preserving
+# explicit false. The jq/jaq `//` operator treats JSON `false` as falsy and
+# falls back, so we use `has()` with type-checking to avoid that trap.
+get_language_config_value() {
+  local lang="$1" key="$2" default="$3"
+  # shellcheck disable=SC2016 # $lang/$key/$cfg are jaq variables, not shell.
+  echo "${CONFIG_JSON}" | jaq -r \
+    --arg lang "${lang}" \
+    --arg key "${key}" \
+    --arg default "${default}" \
+    '.languages[$lang] as $cfg
+     | if (($cfg | type) == "object" and ($cfg | has($key)) and ($cfg[$key] != null))
+       then $cfg[$key]
+       else $default
+       end' 2>/dev/null
+}
+
 # Get a nested TS config value with default
 get_ts_config() {
-  local key="$1"
-  local default="$2"
-  echo "${CONFIG_JSON}" | jaq -r ".languages.typescript.${key} // \"${default}\"" 2>/dev/null
+  get_language_config_value "typescript" "$1" "$2"
 }
 
 # Check if Elixir is enabled (supports both bool and nested object config)
@@ -269,7 +284,7 @@ is_elixir_enabled() {
     true) return 0 ;;
     *) # nested object - check .enabled field
       local enabled
-      enabled=$(echo "${CONFIG_JSON}" | jaq -r '.languages.elixir.enabled // true' 2>/dev/null)
+      enabled=$(echo "${CONFIG_JSON}" | jaq -r '.languages.elixir | if has("enabled") then .enabled else true end' 2>/dev/null)
       [[ "${enabled}" != "false" ]]
       ;;
   esac
@@ -277,14 +292,7 @@ is_elixir_enabled() {
 
 # Get a nested Elixir config value with default
 get_elixir_config() {
-  local key="$1"
-  local default="$2"
-  local ex_config
-  ex_config=$(echo "${CONFIG_JSON}" | jaq -r '.languages.elixir' 2>/dev/null)
-  case "${ex_config}" in
-    true | false | null) echo "${default}" ;;
-    *) echo "${CONFIG_JSON}" | jaq -r ".languages.elixir.${key} // \"${default}\"" 2>/dev/null ;;
-  esac
+  get_language_config_value "elixir" "$1" "$2"
 }
 
 # Detect Biome binary with session caching (D8)

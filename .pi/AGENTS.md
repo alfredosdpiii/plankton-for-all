@@ -40,3 +40,10 @@ Protected Phoenix config files: `.formatter.exs`, `.credo.exs`, `.sobelow-conf`,
 ## Config
 
 Linting config lives in `.plankton/config.json`.
+
+## Hook sync
+
+Repo hook updates must keep `.plankton/hooks/multi_linter.sh` and
+`.pi/extensions/plankton/hooks/multi_linter.sh` byte-for-byte identical. Updating
+the global Pi hook requires running `scripts/install-plankton.sh` or manually
+copying the hook to `~/.pi/agent/extensions/plankton/hooks/multi_linter.sh`.

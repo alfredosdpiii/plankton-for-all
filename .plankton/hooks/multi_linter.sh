@@ -253,11 +253,26 @@ is_typescript_enabled() {
   esac
 }
 
+# get_language_config_value: read a language-specific config value, preserving
+# explicit false. The jq/jaq `//` operator treats JSON `false` as falsy and
+# falls back, so we use `has()` with type-checking to avoid that trap.
+get_language_config_value() {
+  local lang="$1" key="$2" default="$3"
+  # shellcheck disable=SC2016 # $lang/$key/$cfg are jaq variables, not shell.
+  echo "${CONFIG_JSON}" | jaq -r \
+    --arg lang "${lang}" \
+    --arg key "${key}" \
+    --arg default "${default}" \
+    '.languages[$lang] as $cfg
+     | if (($cfg | type) == "object" and ($cfg | has($key)) and ($cfg[$key] != null))
+       then $cfg[$key]
+       else $default
+       end' 2>/dev/null
+}
+
 # Get a nested TS config value with default
 get_ts_config() {
-  local key="$1"
-  local default="$2"
-  echo "${CONFIG_JSON}" | jaq -r ".languages.typescript.${key} // \"${default}\"" 2>/dev/null
+  get_language_config_value "typescript" "$1" "$2"
 }
 
 # Check if Elixir is enabled (supports both bool and nested object config)
@@ -269,7 +284,7 @@ is_elixir_enabled() {
     true) return 0 ;;
     *) # nested object - check .enabled field
       local enabled
-      enabled=$(echo "${CONFIG_JSON}" | jaq -r '.languages.elixir.enabled // true' 2>/dev/null)
+      enabled=$(echo "${CONFIG_JSON}" | jaq -r '.languages.elixir | if has("enabled") then .enabled else true end' 2>/dev/null)
       [[ "${enabled}" != "false" ]]
       ;;
   esac
@@ -277,14 +292,7 @@ is_elixir_enabled() {
 
 # Get a nested Elixir config value with default
 get_elixir_config() {
-  local key="$1"
-  local default="$2"
-  local ex_config
-  ex_config=$(echo "${CONFIG_JSON}" | jaq -r '.languages.elixir' 2>/dev/null)
-  case "${ex_config}" in
-    true | false | null) echo "${default}" ;;
-    *) echo "${CONFIG_JSON}" | jaq -r ".languages.elixir.${key} // \"${default}\"" 2>/dev/null ;;
-  esac
+  get_language_config_value "elixir" "$1" "$2"
 }
 
 # Detect Biome binary with session caching (D8)
@@ -424,7 +432,6 @@ run_mix_compile_warnings() {
   echo "${output}" | grep -E "^[^ ]+\.ex[s]?:[0-9]+:" || true
 }
 
-
 # Run mix deps.audit for hex package security vulnerabilities (session-scoped)
 run_deps_audit() {
   local root="$1"
@@ -457,15 +464,27 @@ detect_liveview_antipatterns() {
   local violations="[]"
 
   # Only check .ex files that use LiveView
-  [[ "${fp}" != *.ex ]] && { echo "[]"; return; }
-  grep -qE 'use\s+.*:live_view|use\s+.*LiveView' "${fp}" 2>/dev/null || { echo "[]"; return; }
+  [[ "${fp}" != *.ex ]] && {
+    echo "[]"
+    return
+  }
+  grep -qE 'use\s+.*:live_view|use\s+.*LiveView' "${fp}" 2>/dev/null || {
+    echo "[]"
+    return
+  }
 
   local file_content
-  file_content=$(cat "${fp}" 2>/dev/null) || { echo "[]"; return; }
+  file_content=$(cat "${fp}" 2>/dev/null) || {
+    echo "[]"
+    return
+  }
 
   local lv_enabled
   lv_enabled=$(get_elixir_config "liveview_checks" "true")
-  [[ "${lv_enabled}" == "false" ]] && { echo "[]"; return; }
+  [[ "${lv_enabled}" == "false" ]] && {
+    echo "[]"
+    return
+  }
 
   # 1. PubSub.subscribe without connected?/1 guard
   if echo "${file_content}" | grep -qE 'PubSub\.subscribe|Phoenix\.PubSub\.subscribe'; then
@@ -494,7 +513,7 @@ detect_liveview_antipatterns() {
       v=$(jaq -n --arg l "${ln}" \
         '{line:($l|tonumber),column:1,code:"LV_REPO_IN_LIVEVIEW",message:"Repo/Ecto query in LiveView assign. Move data access to a context module.",linter:"liveview-check"}') || true
       [[ -n "${v}" ]] && violations=$(echo "${violations}" "[${v}]" | jaq -s '.[0] + .[1]' 2>/dev/null) || true
-    done <<< "${repo_assign_lines}"
+    done <<<"${repo_assign_lines}"
   fi
 
   # 3. handle_event without pattern matching on params
@@ -512,7 +531,7 @@ detect_liveview_antipatterns() {
       v=$(jaq -n --arg l "${ln}" \
         '{line:($l|tonumber),column:1,code:"LV_GENERIC_EVENT_PARAMS",message:"handle_event/3 uses generic variable for params. Prefer pattern matching: def handle_event(\"name\", %{\"key\" => val}, socket)",linter:"liveview-check"}') || true
       [[ -n "${v}" ]] && violations=$(echo "${violations}" "[${v}]" | jaq -s '.[0] + .[1]' 2>/dev/null) || true
-    done <<< "${generic_events}"
+    done <<<"${generic_events}"
   fi
 
   # 4. Missing @impl true annotations on LiveView callbacks
@@ -536,7 +555,7 @@ detect_liveview_antipatterns() {
             '{line:($l|tonumber),column:1,code:"LV_MISSING_IMPL",message:("Missing @impl true before " + $cb + ". Add annotation for LiveView callbacks."),linter:"liveview-check"}') || true
           [[ -n "${v}" ]] && violations=$(echo "${violations}" "[${v}]" | jaq -s '.[0] + .[1]' 2>/dev/null) || true
         fi
-      done <<< "${cb_lines}"
+      done <<<"${cb_lines}"
     fi
   done
 
@@ -553,7 +572,7 @@ detect_liveview_antipatterns() {
       v=$(jaq -n --arg l "${ln}" \
         '{line:($l|tonumber),column:1,code:"LV_LIST_WITHOUT_STREAM",message:"List assigned directly to socket. For large/frequently-updated lists, consider stream/3 to minimize diff payloads.",linter:"liveview-check"}') || true
       [[ -n "${v}" ]] && violations=$(echo "${violations}" "[${v}]" | jaq -s '.[0] + .[1]' 2>/dev/null) || true
-    done <<< "${list_assigns}"
+    done <<<"${list_assigns}"
   fi
 
   # 6. Unused socket assigns (assign set but key not found in render/template)
@@ -575,7 +594,7 @@ detect_liveview_antipatterns() {
             '{line:($l|tonumber),column:1,code:"LV_UNUSED_ASSIGN",message:("Socket assign :" + $k + " is set but not referenced in render/1. Remove or use it."),linter:"liveview-check"}') || true
           [[ -n "${v}" ]] && violations=$(echo "${violations}" "[${v}]" | jaq -s '.[0] + .[1]' 2>/dev/null) || true
         fi
-      done <<< "${assign_keys}"
+      done <<<"${assign_keys}"
     fi
   fi
 
@@ -650,15 +669,18 @@ _delegate_pi() {
 
   local pi_cmd=""
   command -v pi >/dev/null 2>&1 && pi_cmd="pi"
-  [[ -z "${pi_cmd}" ]] && { echo "[hook:error] pi binary not found" >&2; return 0; }
+  [[ -z "${pi_cmd}" ]] && {
+    echo "[hook:error] pi binary not found" >&2
+    return 0
+  }
 
   local pi_model
   local anthropic_family="clau""de"
   case "${model}" in
-    haiku)  pi_model="anthropic/${anthropic_family}-haiku-4-5" ;;
+    haiku) pi_model="anthropic/${anthropic_family}-haiku-4-5" ;;
     sonnet) pi_model="anthropic/${anthropic_family}-sonnet-4-5" ;;
-    opus)   pi_model="anthropic/${anthropic_family}-opus-4" ;;
-    *)      pi_model="${model}" ;;
+    opus) pi_model="anthropic/${anthropic_family}-opus-4" ;;
+    *) pi_model="${model}" ;;
   esac
 
   # Map allowed tools: Pi's Edit,Read,Write -> Pi's edit,read,write
@@ -687,7 +709,6 @@ _delegate_pi() {
     echo "[hook:warning] pi subprocess failed (exit ${subprocess_exit})" >&2
   fi
 }
-
 
 delegate_with_agent() {
   local fp="$1" prompt="$2" model="$3" tier_tools="$4" tier_max_turns="$5" tier_timeout="$6"
