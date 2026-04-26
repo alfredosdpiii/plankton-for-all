@@ -1,49 +1,53 @@
 # Plankton for All
 
-This repository is a fork of the original
-[`alexfazio/plankton`](https://github.com/alexfazio/plankton) project. It keeps
-the original Pi Plankton idea while evolving this fork with project-local hooks,
-stricter configuration handling, package-manager guardrails, and regression
-coverage for multi-language linting.
+Plankton for All is a fork of the original
+[`alexfazio/plankton`](https://github.com/alexfazio/plankton) project. The
+original proved the useful idea: Pi can enforce code quality from inside the
+agent loop. This fork keeps that idea, but changes the product direction toward
+a Pi-first package that can bootstrap itself in any project and keep runtime
+linting, Git hooks, and correction subprocesses consistent.
 
-Plankton is a Pi-exclusive code-quality extension. It runs project-local bash
-hooks through a safe TypeScript extension, blocks protected linter config edits,
-enforces package-manager choices, and reports lint feedback after file writes.
+This is not the upstream `alexfazio/plankton` repository. It is a maintained fork
+for the `alfredosdpiii/plankton-for-all` workflow.
 
-## What is included
+## Why this fork exists
 
-- Project extension: `.pi/extensions/plankton/`
-- Runtime hooks: `.plankton/hooks/`
-- Hook tests and fixtures: `.plankton/test/`
-- Configuration: `.plankton/config.json`
-- Optional subprocess isolation settings: `.plankton/subprocess-settings.json`
+We forked because the workflow needed more than a checked-in project hook setup:
 
-Pi is the only supported agent target. Other agent adapters have been removed.
+- Installable Pi package metadata for `pi install` and project-local installs.
+- Automatic `.plankton/` initialization in projects that do not already have it.
+- Managed Git `pre-commit` and `commit-msg` hooks for commit-time enforcement.
+- Pi-only subprocess delegation with a configurable correction model.
+- Package-manager guardrails (`uv` for Python, `bun` for JavaScript).
+- False-preserving config reads so explicit `false` toggles stay disabled.
+- Elixir/Phoenix coverage, including Credo, Sobelow, compile warnings,
+  dependency audit, xref warnings, and LiveView pattern checks.
+- Regression tests for hook behavior, auto-init, Git hooks, package metadata,
+  and config toggles.
 
-## Quick start
+## What it does
 
-```bash
-bash scripts/setup.sh
-pi
-```
+Plankton is a Pi extension that runs local Bash hooks around Pi tool calls:
 
-For another project using this repository checkout:
+- Before `write` and `edit`, it blocks edits to protected linter config files.
+- Before `bash`, it blocks disallowed package-manager commands.
+- After successful `write` and `edit`, it lints the changed file.
+- When violations remain, it can ask a Pi correction subprocess to fix them.
+- It reports lint feedback directly in the tool result.
 
-```bash
-bash /path/to/plankton-for-all/scripts/install-plankton.sh /path/to/project
-cd /path/to/project
-pi
-```
+The extension prefers project-local hooks in `.plankton/hooks/`. If a project
+has only the package extension, bundled hooks from `.pi/extensions/plankton/hooks/`
+are used as the fallback.
 
 ## Install as a Pi package
 
-Install the package from GitHub:
+Install globally for all Pi sessions:
 
 ```bash
 pi install git:github.com/alfredosdpiii/plankton-for-all
 ```
 
-Install it for one project and commit `.pi/settings.json` for your team:
+Install for one project and commit `.pi/settings.json` for a team:
 
 ```bash
 pi install -l git:github.com/alfredosdpiii/plankton-for-all
@@ -55,50 +59,78 @@ Try a local checkout without adding it to settings:
 pi -e /path/to/plankton-for-all
 ```
 
-The package manifest is in `package.json` under `pi.extensions`, and the npm
-package includes the extension plus its bundled hooks.
+The package manifest lives in `package.json` under `pi.extensions`. The package
+contains the TypeScript extension plus bundled hook scripts.
 
-## Pi extension behavior
+## Repository-local install
 
-The extension discovers `.plankton/config.json` by walking upward from Pi's
-current working directory. If no config is found but the current directory is
-inside a recognizable project, Plankton automatically initializes `.plankton/`
-at the project root with default config, hooks, and subprocess settings.
+To copy this checkout directly into another project:
 
-During Pi tool execution:
+```bash
+bash /path/to/plankton-for-all/scripts/install-plankton.sh /path/to/project
+cd /path/to/project
+pi
+```
 
-- `write` / `edit` preflight runs `protect_linter_configs.sh`.
-- `bash` preflight runs `enforce_package_managers.sh`.
-- Successful `write` / `edit` results run `multi_linter.sh`.
-- Hook processes run in their own POSIX process group and are terminated as a
-  group on timeout or abort.
-- Project hooks are preferred; bundled hooks in the extension are the fallback.
+For this repository's own development tools:
+
+```bash
+bash scripts/setup.sh
+```
+
+`scripts/setup.sh` installs common local lint binaries such as `jaq`, `ruff`,
+`uv`, `shellcheck`, `shfmt`, `hadolint`, `taplo`, and `bun` when missing.
+
+## Auto initialization
+
+When the extension starts in a recognizable project without `.plankton/`, it
+creates a project-local setup:
+
+- `.plankton/config.json`
+- `.plankton/hooks/*.sh`
+- `.plankton/subprocess-settings.json`
+- `.git/hooks/pre-commit` and `.git/hooks/commit-msg` when the project is a Git
+  repository and those hooks are absent or already Plankton-managed
+
+Recognized project markers include `.git`, `package.json`, `pyproject.toml`,
+`uv.lock`, `mix.exs`, `Cargo.toml`, `go.mod`, `deno.json`, `bun.lock`,
+`pnpm-lock.yaml`, `yarn.lock`, and `package-lock.json`.
+
+Plankton does not overwrite existing custom Git hooks. Set
+`PLANKTON_GIT_HOOKS=0` to bypass managed Git hooks temporarily.
 
 ## Commands
 
 Use these Pi slash commands:
 
 ```text
-/plankton-status                     Show config, hook paths, package managers, stats
-/plankton-lint <file>                Run linting manually for one file
-/plankton-toggle <lang>              Toggle a language in .plankton/config.json
-/plankton-correction <provider/model> Set the correction subprocess model
+/plankton-status                       Show config, hooks, package managers, stats
+/plankton-lint <file>                  Run linting manually for one file
+/plankton-toggle <lang>                Toggle a language in .plankton/config.json
+/plankton-correction <provider/model>  Set the correction subprocess model
 ```
 
-## Tools
+Example:
 
-The extension registers two LLM-callable tools:
+```text
+/plankton-correction gpt-5.4-mini
+```
 
-- `plankton_lint({ path })` returns a compact summary and `systemMessage`.
-- `plankton_config({ action, key, value })` safely reads or updates whitelisted
-  configuration keys.
+## LLM-callable tools
+
+The extension registers these tools for the assistant:
+
+- `plankton_lint({ path })`: run linting for one project file and return a
+  compact summary.
+- `plankton_config({ action, key, value })`: safely read or update whitelisted
+  config keys. The `correction_model` key maps to
+  `subprocess.correction_model`.
 
 ## Configuration
 
-`.plankton/config.json` controls language toggles, protected files, subprocess
-settings, duplication thresholds, and package-manager enforcement.
+The main config file is `.plankton/config.json`.
 
-Important defaults:
+Important defaults in this fork:
 
 ```json
 {
@@ -115,22 +147,63 @@ Important defaults:
 }
 ```
 
-Legacy delegate values are coerced at read time: `auto` and removed agent names
-become `pi`; unknown values become `none`.
+`subprocess.correction_model` is passed to Pi as `--model` for automatic
+correction subprocesses. Set it to any model string Pi accepts. If it is omitted,
+Plankton falls back to tiered model selection. The older
+`subprocess.global_model_override` key is still honored as a fallback.
 
-`subprocess.correction_model` controls the Pi model used for automatic correction
-subprocesses. Set it to any Pi `--model` value (for example,
-`anthropic/claude-haiku-4-5`, `sonnet`, or `gpt-5.4-mini`). If omitted,
-Plankton falls back to tiered model selection; legacy
-`subprocess.global_model_override` is still honored.
+The environment variable `PLANKTON_CORRECTION_MODEL` overrides config for one
+run.
+
+Legacy delegate values are normalized at read time: `auto` and removed agent
+names become `pi`; unknown values become `none`.
+
+## Language coverage
+
+Current hook coverage includes:
+
+- Python: ruff, ty, flake8-async, flake8-pydantic, vulture, bandit.
+- TypeScript/JavaScript/CSS: Biome, Semgrep, optional project-scoped tools.
+- Elixir/Phoenix: mix format, Credo, Sobelow, compile warnings, deps audit,
+  xref warnings, LiveView pattern checks.
+- Shell: shellcheck and shfmt.
+- YAML, JSON, TOML, Dockerfile, and Markdown checks.
+
+Many tools are fail-open when the binary is not installed, so a project can start
+with only core dependencies and add language-specific tools over time.
+
+## Git hooks
+
+Auto-init and `scripts/install-plankton.sh` install managed Git hooks when safe:
+
+- `pre-commit` runs deterministic Plankton checks on staged files.
+- `commit-msg` blocks AI attribution boilerplate such as `Co-Authored-By`,
+  `generated by`, or `AI assistant`.
+
+The managed hooks delegate to `.plankton/hooks/git_pre_commit.sh` and
+`.plankton/hooks/git_commit_msg.sh`.
 
 ## Verification
 
+Run the main verification suite:
+
 ```bash
-bunx tsc --project tsconfig.extensions.json
+bun run test
+```
+
+Equivalent expanded commands:
+
+```bash
+bunx tsc --noEmit
 bash .plankton/test/test_auto_init.sh
 bash .plankton/test/test_hook.sh --self-test
 uv run pytest
+```
+
+Package dry-run:
+
+```bash
+npm pack --dry-run
 ```
 
 Useful direct hook checks:
@@ -145,34 +218,12 @@ printf '%s' '{"tool_input":{"command":"pip install requests"}}' \
 bash .plankton/hooks/git_pre_commit.sh
 ```
 
-## Auto initialization
-
-When the global extension starts in a project without `.plankton/`, it creates a
-minimal project-local setup:
-
-- `.plankton/config.json`
-- `.plankton/hooks/*.sh`
-- `.plankton/subprocess-settings.json`
-- `.git/hooks/pre-commit` and `.git/hooks/commit-msg` when the project is a Git
-  repository and those hooks are absent or already Plankton-managed
-
-Auto initialization only runs when Plankton detects common project markers such
-as `.git`, `package.json`, `pyproject.toml`, `uv.lock`, `mix.exs`, `Cargo.toml`,
-or `go.mod`. This avoids creating `.plankton/` in arbitrary directories.
-
-Plankton does not overwrite existing custom Git hooks. Set `PLANKTON_GIT_HOOKS=0`
-to bypass the managed Git hooks temporarily.
-
 ## Manual global install
 
-If you do not want to use `pi install`, copy the extension directory into Pi's
-global extension directory:
+Prefer `pi install`, but a manual global install also works:
 
 ```bash
 mkdir -p ~/.pi/agent/extensions
 cp -a .pi/extensions/plankton ~/.pi/agent/extensions/plankton
 pi
 ```
-
-The bundled hooks allow the global extension to operate in projects that have a
-`.plankton/config.json` but no project-local `.plankton/hooks/` directory.
