@@ -3,9 +3,9 @@
 ## TL;DR
 
 - **Purpose**: Multi-layered test infrastructure validating
-  Claude Code hook behavior across all file types, output
+  Pi hook behavior across all file types, output
   channels, subprocess delegation, and CI pipelines
-- **Scope**: `.claude/hooks/test_hook.sh`, `.claude/tests/hooks/`,
+- **Scope**: `.plankton/test/test_hook.sh`, `.plankton/test/`,
   `tests/stress/`, `.github/workflows/ci.yml`, `.pre-commit-config.yaml`
 - **Key responsibilities**:
   - Self-test suite (113 cases) for fast per-change validation
@@ -25,7 +25,7 @@
   violation JSON schema, ensure subprocess delegation works,
   verify all PostToolUse output channels, verify env var
   propagation, nursery config validation, subprocess permissions
-- **Non-goals**: Testing the Claude Code runtime itself;
+- **Non-goals**: Testing the Pi runtime itself;
   testing linter rule correctness; end-to-end LLM behavior
   verification (that requires mitmproxy live tests)
 - **Upstream**: Hook scripts (multi_linter.sh,
@@ -43,7 +43,7 @@
 - **Five test layers**: self-test, feedback loop, production
   path, five-channel, stress test
 - **Fixture isolation**: Shared config fixtures in
-  `.claude/tests/hooks/fixtures/` decouple tests from
+  `.plankton/test/fixtures/` decouple tests from
   production config
 - **TAP output**: Stress tests emit Test Anything Protocol
   for machine-readable results
@@ -99,8 +99,8 @@ graph TB
 
 ### test_hook.sh (Self-Test Suite)
 
-- **Location**: `.claude/hooks/test_hook.sh` (~2,089 lines)
-- **Invocation**: `bash .claude/hooks/test_hook.sh --self-test`
+- **Location**: `.plankton/test/test_hook.sh` (~2,089 lines)
+- **Invocation**: `bash .plankton/test/test_hook.sh --self-test`
 - **Test count**: 113 pass / 0 fail
 - **Implementation**: `run_self_test()` orchestrates all tests
   using three helpers: `test_temp_file()` (exit code checks),
@@ -119,9 +119,9 @@ graph TB
 
 ### verify_feedback_loop.sh
 
-- **Location**: `.claude/tests/hooks/verify_feedback_loop.sh`
+- **Location**: `.plankton/test/verify_feedback_loop.sh`
   (208 lines)
-- **Invocation**: `bash .claude/tests/hooks/verify_feedback_loop.sh`
+- **Invocation**: `bash .plankton/test/verify_feedback_loop.sh`
 - **Test count**: 28 pass / 0 fail / 4 skip (biome)
 - **Purpose**: Validates multi_linter.sh stderr output format
   for all file types under `HOOK_SKIP_SUBPROCESS=1`
@@ -138,26 +138,26 @@ graph TB
 
 ### test_production_path.sh
 
-- **Location**: `.claude/tests/hooks/test_production_path.sh`
+- **Location**: `.plankton/test/test_production_path.sh`
   (276 lines)
-- **Invocation**: `bash .claude/tests/hooks/test_production_path.sh`
+- **Invocation**: `bash .plankton/test/test_production_path.sh`
 - **Test count**: 10 pass / 0 fail
-- **Purpose**: Tests subprocess delegation with mock `claude`
+- **Purpose**: Tests subprocess delegation with mock `pi`
   binaries (no real LLM calls)
 - **4 scenarios**:
   1. Subprocess fixes nothing → exit 2 + violations remain
      - `[hook:feedback-loop]` marker
   2. Subprocess fixes all → exit 0
-  3. `claude` not in PATH → exit 2 + "not found" message
+  3. `pi` not in PATH → exit 2 + "not found" message
   4. Delegation disabled via config → exit 2 + mock not called
 - **Isolation**: Uses `isolated_home` in temp dir to prevent
   production config interference
 
 ### test_five_channels.sh
 
-- **Location**: `.claude/tests/hooks/test_five_channels.sh`
+- **Location**: `.plankton/test/test_five_channels.sh`
   (553 lines)
-- **Invocation**: `bash .claude/tests/hooks/test_five_channels.sh`
+- **Invocation**: `bash .plankton/test/test_five_channels.sh`
   or `--runbook` for mitmproxy instructions
 - **Test count**: 20 pass / 0 fail
 - **Purpose**: Tests 5 PostToolUse output channels with
@@ -188,19 +188,19 @@ graph TB
 
 ### Test Fixtures
 
-- **Location**: `.claude/tests/hooks/fixtures/`
+- **Location**: `.plankton/test/fixtures/`
 - **Files**:
   - `config.json` (97 lines): Maximal config with all languages
     and options enabled; includes `_exclusions_warning` for
-    `.claude/` skip trap documentation
-- **Design**: Decouples tests from production `.claude/hooks/config.json`;
-  all test helpers set `CLAUDE_PROJECT_DIR` to a temp dir
+    `.pi/` skip trap documentation
+- **Design**: Decouples tests from production `.plankton/config.json`;
+  all test helpers set `PLANKTON_PROJECT_DIR` to a temp dir
   containing copies of these fixtures
 
 ### Test Utilities
 
 - **swap_settings.sh** (107 lines): Backup/restore helper
-  for `.claude/settings.json` with SHA-256 verification.
+  for `.pi/settings.json` with SHA-256 verification.
   4 subcommands: `backup`, `swap-minimal`, `restore`, `status`
 - **minimal-test-hook.sh** (3 lines): Stub PostToolUse hook
   that always exits 2 with 3 violations. Used to isolate
@@ -229,18 +229,18 @@ graph TB
 ## Data Model
 
 - **Test input**: JSON `{"tool_input": {"file_path": "..."}}` piped
-  to hook stdin (same format Claude Code uses)
+  to hook stdin (same format Pi uses)
 - **Test assertions**: Exit code + stderr content + JSON validity
 - **TAP format**: `ok N - description` / `not ok N - description`
   with skip directives
 - **Agent results**: JSONL files per agent in
-  `.claude/tests/hooks/results/` with markdown aggregation
+  `.plankton/test/results/` with markdown aggregation
 - **Fixture config schema**: Mirrors production `config.json`
   with all features enabled for maximum coverage
 
 ## Operations
 
-- **Local fast check**: `bash .claude/hooks/test_hook.sh --self-test`
+- **Local fast check**: `bash .plankton/test/test_hook.sh --self-test`
   (~30s, 113 tests)
 - **Full local suite**: Run all 4 harnesses sequentially (~2 min,
   170 tests + 4 skip)
@@ -253,19 +253,19 @@ graph TB
     (used by self-test and feedback loop harness)
   - `HOOK_DEBUG_MODEL=1`: Log model selection reasoning
   - `HOOK_SKIP_PM=1`: Bypass package manager enforcement
-  - `CLAUDE_PROJECT_DIR`: Override project root for config lookup
+  - `PLANKTON_PROJECT_DIR`: Override project root for config lookup
 
 ## Testing & Quality
 
 - **Pre-commit pipeline**: 15 hook IDs mirroring CC hook
   linters; runs `uv run pre-commit run --all-files`
 - **Agent integration tests**: 103 tests via TeamCreate (3 agents);
-  results archived in `.claude/tests/hooks/results/archive/`
+  results archived in `.plankton/test/results/archive/`
 - **Regression workflow** (from `docs/tests/README.md`):
-  1. Self-test: `bash .claude/hooks/test_hook.sh --self-test`
-  2. Feedback loop: `bash .claude/tests/hooks/verify_feedback_loop.sh`
-  3. Production path: `bash .claude/tests/hooks/test_production_path.sh`
-  4. Five channels: `bash .claude/tests/hooks/test_five_channels.sh`
+  1. Self-test: `bash .plankton/test/test_hook.sh --self-test`
+  2. Feedback loop: `bash .plankton/test/verify_feedback_loop.sh`
+  3. Production path: `bash .plankton/test/test_production_path.sh`
+  4. Five channels: `bash .plankton/test/test_five_channels.sh`
 - **Mitmproxy live test**: Manual rank-1 verification using
   `HTTPS_PROXY=http://localhost:8080` to confirm system-reminder
   delivery to the model (see `make-plankton-work.md` Step 2)
@@ -294,7 +294,7 @@ graph TB
   cross-contamination
 - **HOME isolation**: `test_production_path.sh` uses
   `isolated_home` in temp dir to prevent writes to real
-  `~/.claude/`
+  `~/.pi/`
 - **TOML workaround**: taplo resolves include globs from CWD;
   TOML fixtures placed in project tree with EXIT trap cleanup
 - **Cleanup**: All harnesses use `trap cleanup EXIT` on temp dirs
@@ -310,7 +310,7 @@ graph TB
 - **Stress test size**: `run_stress_tests.sh` at 2,347 lines
   is complex; per-category modules would help
 - **Agent tests require TeamCreate**: 103 integration tests
-  need Claude Code team orchestration; not runnable in CI
+  need Pi team orchestration; not runnable in CI
 - **Stop hook untestable**: `stop_config_guardian.sh` requires
   session lifecycle events that cannot be simulated
 - **TOML fixture leak risk**: Placing TOML files in project tree
@@ -327,7 +327,7 @@ graph TB
   three-agent TeamCreate integration test architecture
 - **`docs/specs/stress-test-report.md`**: Generated stress
   test results (133 tests, 8 categories)
-- **`.claude/tests/hooks/results/`**: Agent integration test
+- **`.plankton/test/results/`**: Agent integration test
   JSONL results and aggregated RESULTS.md
 - **`docs/specs/posttooluse-issue/make-plankton-work.md`**:
   Live verification procedure (Step 2) with mitmproxy
@@ -344,9 +344,9 @@ graph TB
 - **Gating**: Checking `command -v` before running linter-specific
   tests; skip if tool absent
 - **fixture_project_dir**: Temp directory with copies of
-  `.claude/tests/hooks/fixtures/` config files, used as
-  `CLAUDE_PROJECT_DIR` during tests
-- **Mock claude**: Fake `claude` binary in test PATH that
+  `.plankton/test/fixtures/` config files, used as
+  `PLANKTON_PROJECT_DIR` during tests
+- **Mock pi**: Fake `pi` binary in test PATH that
   simulates subprocess behavior without LLM calls
 - **Runbook mode**: `--runbook` flag on test_five_channels.sh
   that prints mitmproxy verification steps instead of running

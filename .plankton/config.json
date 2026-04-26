@@ -1,9 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "cc_tested_version": "2.1.50",
-  "_comment": "Claude Code Hooks Configuration - edit this file to customize hook behavior",
+  "_comment": "Plankton Pi Hooks Configuration - edit this file to customize hook behavior",
   "languages": {
     "python": true,
+    "elixir": {
+      "enabled": true,
+      "sobelow": true,
+      "mix_compile_warnings": false,
+      "liveview_checks": true,
+      "deps_audit": true,
+      "xref_warnings": true
+    },
     "shell": true,
     "yaml": true,
     "json": true,
@@ -35,7 +42,11 @@
     ".oxlintrc.json",
     "ty.toml",
     ".semgrep.yml",
-    "knip.json"
+    "knip.json",
+    ".formatter.exs",
+    ".credo.exs",
+    ".sobelow-conf",
+    ".sobelow-skips"
   ],
   "security_linter_exclusions": [
     ".venv/",
@@ -47,8 +58,8 @@
     "subprocess_delegation": true
   },
   "subprocess": {
-    "settings_file": ".claude/subprocess-settings.json",
-    "delegate_cmd": "auto"
+    "settings_file": ".plankton/subprocess-settings.json",
+    "delegate_cmd": "pi"
   },
   "jscpd": {
     "session_threshold": 3,
@@ -84,5 +95,6 @@
       "poetry": [],
       "pipenv": []
     }
-  }
+  },
+  "tested_version": "2.1.50"
 }

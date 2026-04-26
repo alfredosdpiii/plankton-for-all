@@ -10,6 +10,6 @@
 
 ## checklist
 
-- [ ] `.claude/hooks/test_hook.sh --self-test` passes
+- [ ] `.plankton/test/test_hook.sh --self-test` passes
 - [ ] `uv run pre-commit run --all-files` passes (if Python changes)
 - [ ] No linter config files modified (or modification is intentional)

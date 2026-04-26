@@ -15,7 +15,7 @@ The wizard will:
 1. **Check Dependencies**: Verify `jaq`, `ruff`, and `uv` are installed.
 2. **Detect Languages**: Scan your project for Python, TypeScript, Docker, etc.
 3. **Configure Hooks**: Interactively enable/disable language enforcement.
-4. **Finalize Environment**: Generate `.claude/hooks/config.json`
+4. **Finalize Environment**: Generate `.plankton/config.json`
    and ensure hook scripts are executable.
 
 If `uv` is available, you can also run:
@@ -116,7 +116,7 @@ uv sync --all-extras --no-install-project
 
 Gotcha: Python security linters only exclude infrastructure paths by default
 (`.venv/`, `node_modules/`, `.git/`). You can customize these paths via the
-`security_linter_exclusions` array in `.claude/hooks/config.json`.
+`security_linter_exclusions` array in `.plankton/config.json`.
 
 ## typescript
 
@@ -299,7 +299,7 @@ formats JSON files automatically. No additional tools needed.
 
 If a tool is installed system-wide but you do not want
 Plankton to lint that language, disable it explicitly in
-`.claude/hooks/config.json`:
+`.plankton/config.json`:
 
 ```json
 { "languages": { "shell": false, "dockerfile": false } }
@@ -313,7 +313,7 @@ what you need — missing keys use defaults.
 ## starter configs
 
 The default behavior (no config.json) enables everything.
-Create `.claude/hooks/config.json` with only the keys you
+Create `.plankton/config.json` with only the keys you
 want to override.
 
 **Minimal (formatting only)** — auto-format runs, but no
@@ -385,7 +385,7 @@ uv run pre-commit run --all-files
 ## verify your setup
 
 ```bash
-.claude/hooks/test_hook.sh --self-test
+.plankton/test/test_hook.sh --self-test
 ```
 
 If all checks pass, you are ready. The self-test verifies

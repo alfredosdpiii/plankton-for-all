@@ -42,18 +42,18 @@ def _parse_version(v: str) -> tuple[int, ...]:
 # ---------- checks ----------
 
 
-def check_claude_version(*, run_fn: Callable[..., Any] | None = None, **_kwargs: Any) -> PrereqResult:
-    """Step 1: Verify claude CLI version >= 2.1.50."""
+def check_pi_version(*, run_fn: Callable[..., Any] | None = None, **_kwargs: Any) -> PrereqResult:
+    """Step 1: Verify pi CLI version is available."""
     if run_fn is None:
-        run_fn = lambda: subprocess.run(["claude", "-v"], capture_output=True, text=True, check=False)  # noqa: E731 S603 S607  # nosec B603 B607
+        run_fn = lambda: subprocess.run(["pi", "--version"], capture_output=True, text=True, check=False)  # noqa: E731 S603 S607  # nosec B603 B607
     try:
         proc = run_fn()
         version_str = proc.stdout.strip()
         if _parse_version(version_str) >= (2, 1, 50):
-            return PrereqResult(name="check_claude_version", passed=True, detail=f"v{version_str}", step=1)
-        return PrereqResult(name="check_claude_version", passed=False, detail=f"v{version_str} < 2.1.50", step=1)
+            return PrereqResult(name="check_pi_version", passed=True, detail=f"v{version_str}", step=1)
+        return PrereqResult(name="check_pi_version", passed=False, detail=f"v{version_str} < 2.1.50", step=1)
     except FileNotFoundError:
-        return PrereqResult(name="check_claude_version", passed=False, detail="claude CLI not found", step=1)
+        return PrereqResult(name="check_pi_version", passed=False, detail="pi CLI not found", step=1)
 
 
 def check_bare_alias(
@@ -69,7 +69,7 @@ def check_bare_alias(
     to 'claude --bare ...'. The ADR's manual check uses
     `type cc | grep -q '-bare'` for alias verification.
     """
-    settings_path = settings_path or Path.home() / ".claude" / "bare-settings.json"
+    settings_path = settings_path or Path.home() / ".pi" / "bare-settings.json"
     which_fn = which_fn or shutil.which
     issues: list[str] = []
     if not settings_path.exists():
@@ -92,7 +92,7 @@ def check_bare_alias(
 def check_hooks_present(*, plankton_root: Path | None = None, **_kwargs: Any) -> PrereqResult:
     """Step 3: Verify hooks dir has .sh files and .ruff.toml exists."""
     root = plankton_root or PLANKTON_ROOT
-    hooks_dir = root / ".claude" / "hooks"
+    hooks_dir = root / ".plankton" / "hooks"
     issues: list[str] = []
     if not hooks_dir.is_dir():
         issues.append("hooks dir missing")
@@ -106,7 +106,7 @@ def check_hooks_present(*, plankton_root: Path | None = None, **_kwargs: Any) ->
 
 def check_baseline_no_hooks(*, settings_path: Path | None = None, **_kwargs: Any) -> PrereqResult:
     """Step 4: Verify bare-settings.json has disableAllHooks=true."""
-    settings_path = settings_path or Path.home() / ".claude" / "bare-settings.json"
+    settings_path = settings_path or Path.home() / ".pi" / "bare-settings.json"
     if not settings_path.exists():
         return PrereqResult(name="check_baseline_no_hooks", passed=False, detail="settings file missing", step=4)
     data = json.loads(settings_path.read_text())
@@ -115,12 +115,12 @@ def check_baseline_no_hooks(*, settings_path: Path | None = None, **_kwargs: Any
     return PrereqResult(name="check_baseline_no_hooks", passed=False, detail="disableAllHooks not true", step=4)
 
 
-def check_claude_md_renamed(*, plankton_root: Path | None = None, **_kwargs: Any) -> PrereqResult:
+def check_pi_md_renamed(*, plankton_root: Path | None = None, **_kwargs: Any) -> PrereqResult:
     """Step 5: Verify CLAUDE.md does NOT exist at plankton_root."""
     root = plankton_root or PLANKTON_ROOT
     if (root / "CLAUDE.md").exists():
-        return PrereqResult(name="check_claude_md_renamed", passed=False, detail="CLAUDE.md still present", step=5)
-    return PrereqResult(name="check_claude_md_renamed", passed=True, detail="CLAUDE.md absent", step=5)
+        return PrereqResult(name="check_pi_md_renamed", passed=False, detail="CLAUDE.md still present", step=5)
+    return PrereqResult(name="check_pi_md_renamed", passed=True, detail="CLAUDE.md absent", step=5)
 
 
 def check_subprocess_workarounds(
@@ -145,7 +145,7 @@ def check_eval_harness(*, which_fn: Callable[[str], str | None] | None = None, *
 def check_subprocess_permission_fix(*, plankton_root: Path | None = None, **_kwargs: Any) -> PrereqResult:
     """Step 8: Verify multi_linter.sh has permission flags."""
     root = plankton_root or PLANKTON_ROOT
-    hook = root / ".claude" / "hooks" / "multi_linter.sh"
+    hook = root / ".plankton" / "hooks" / "multi_linter.sh"
     if not hook.exists():
         return PrereqResult(
             name="check_subprocess_permission_fix", passed=False, detail="multi_linter.sh missing", step=8
@@ -194,6 +194,9 @@ def check_archive_clean(*, plankton_root: Path | None = None, **_kwargs: Any) ->
     return PrereqResult(name="check_archive_clean", passed=True, detail="benchmark/ clean", step=11)
 
 
+check_claude_version = check_pi_version
+check_claude_md_renamed = check_pi_md_renamed
+
 # ---------- full-mode live checks ----------
 
 _HOOK_EVIDENCE = ("PreToolUse", "PostToolUse", "Notification", "Stop")
@@ -207,16 +210,16 @@ def _clean_env() -> dict[str, str]:
 def check_baseline_zero_hooks(*, run_fn: Callable[..., Any] | None = None, **_kwargs: Any) -> PrereqResult:
     """Step 4 full: Run trivial task via bare claude -p, check stdout for hook evidence."""
     if run_fn is None:
-        claude_bin = shutil.which("claude")
-        if not claude_bin:
-            return PrereqResult(name="check_baseline_zero_hooks_live", passed=False, detail="claude not found", step=4)
+        pi_bin = shutil.which("pi")
+        if not pi_bin:
+            return PrereqResult(name="check_baseline_zero_hooks_live", passed=False, detail="pi not found", step=4)
         run_fn = lambda: subprocess.run(  # noqa: E731 S603  # nosec B603
             [
-                claude_bin,
+                pi_bin,
                 "--setting-sources",
                 "",
                 "--settings",
-                str(Path.home() / ".claude" / "bare-settings.json"),
+                str(Path.home() / ".pi" / "bare-settings.json"),
                 "--strict-mcp-config",
                 "--disable-slash-commands",
                 "-p",
@@ -242,14 +245,14 @@ def check_tty_workaround(*, run_fn: Callable[..., Any] | None = None, **_kwargs:
     """Step 6a: Run script -q /dev/null claude -p 'say hi', verify non-empty stdout and exit 0."""
     if run_fn is None:
         script_bin = shutil.which("script")
-        claude_bin = shutil.which("claude")
-        if not script_bin or not claude_bin:
-            missing = [name for name, path in [("script", script_bin), ("claude", claude_bin)] if not path]
+        pi_bin = shutil.which("pi")
+        if not script_bin or not pi_bin:
+            missing = [name for name, path in [("script", script_bin), ("pi", pi_bin)] if not path]
             return PrereqResult(
                 name="check_tty_workaround_live", passed=False, detail=f"not found: {', '.join(missing)}", step=6
             )
         run_fn = lambda: subprocess.run(  # noqa: E731 S603  # nosec B603
-            [script_bin, "-q", "/dev/null", claude_bin, "-p", "--dangerously-skip-permissions", "say hi"],
+            [script_bin, "-q", "/dev/null", pi_bin, "-p", "--dangerously-skip-permissions", "say hi"],
             capture_output=True,
             text=True,
             check=False,
@@ -270,12 +273,12 @@ def check_tty_workaround(*, run_fn: Callable[..., Any] | None = None, **_kwargs:
 def check_large_stdin(*, run_fn: Callable[..., Any] | None = None, **_kwargs: Any) -> PrereqResult:
     """Step 6b: Pipe >7000 chars to claude -p, verify non-empty stdout."""
     if run_fn is None:
-        claude_bin = shutil.which("claude")
-        if not claude_bin:
-            return PrereqResult(name="check_large_stdin_live", passed=False, detail="claude not found", step=6)
+        pi_bin = shutil.which("pi")
+        if not pi_bin:
+            return PrereqResult(name="check_large_stdin_live", passed=False, detail="pi not found", step=6)
         large_input = "x" * 7001
         run_fn = lambda: subprocess.run(  # noqa: E731 S603  # nosec B603
-            [claude_bin, "-p", "--dangerously-skip-permissions", "echo back"],
+            [pi_bin, "-p", "--dangerously-skip-permissions", "echo back"],
             input=large_input,
             capture_output=True,
             text=True,
@@ -295,12 +298,12 @@ def check_large_stdin(*, run_fn: Callable[..., Any] | None = None, **_kwargs: An
 def check_tool_blocklist_enforcement(*, run_fn: Callable[..., Any] | None = None, **_kwargs: Any) -> PrereqResult:
     """Step 9: Run claude -p with --disallowedTools, verify blocked tool not in output."""
     if run_fn is None:
-        claude_bin = shutil.which("claude")
-        if not claude_bin:
-            return PrereqResult(name="check_tool_blocklist_live", passed=False, detail="claude not found", step=9)
+        pi_bin = shutil.which("pi")
+        if not pi_bin:
+            return PrereqResult(name="check_tool_blocklist_live", passed=False, detail="pi not found", step=9)
         run_fn = lambda: subprocess.run(  # noqa: E731 S603  # nosec B603
             [
-                claude_bin,
+                pi_bin,
                 "-p",
                 "--dangerously-skip-permissions",
                 "use WebFetch",
@@ -335,11 +338,11 @@ FULL_CHECKS: list[Callable[..., PrereqResult]] = [
 ]
 
 CHECKS: list[Callable[..., PrereqResult]] = [
-    check_claude_version,
+    check_pi_version,
     check_bare_alias,
     check_hooks_present,
     check_baseline_no_hooks,
-    check_claude_md_renamed,
+    check_pi_md_renamed,
     check_subprocess_workarounds,
     check_eval_harness,
     check_subprocess_permission_fix,

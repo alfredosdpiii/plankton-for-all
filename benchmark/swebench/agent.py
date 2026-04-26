@@ -13,8 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 GIT = shutil.which("git") or "git"
-CLAUDE = shutil.which("claude") or "claude"
-BARE_SETTINGS = Path.home() / ".claude" / "bare-settings.json"
+PI = shutil.which("pi") or "pi"
+BARE_SETTINGS = Path.home() / ".pi" / "bare-settings.json"
 
 
 def _write_prompt_file(prompt: str, work_dir: Path) -> Path:
@@ -37,15 +37,15 @@ def _extract_patch(repo_dir: Path, original_sha: str | None = None) -> str:
     return result.stdout
 
 
-def _parse_claude_output(result: subprocess.CompletedProcess, elapsed: float) -> dict:
+def _parse_pi_output(result: subprocess.CompletedProcess, elapsed: float) -> dict:
     """Parse JSON stdout. Fallback to raw_stdout on invalid JSON."""
     metadata: dict = {"returncode": result.returncode, "elapsed_s": round(elapsed, 1)}
     try:
-        metadata["claude_output"] = json.loads(result.stdout)
+        metadata["pi_output"] = json.loads(result.stdout)
     except (json.JSONDecodeError, ValueError):
         metadata["raw_stdout"] = result.stdout[:2000]
-    if "claude_output" in metadata:
-        parsed = metadata["claude_output"]
+    if "pi_output" in metadata:
+        parsed = metadata["pi_output"]
         cost = parsed.get("cost_usd")
         if cost is None:
             cost = (parsed.get("usage") or {}).get("cost_usd")
@@ -54,11 +54,16 @@ def _parse_claude_output(result: subprocess.CompletedProcess, elapsed: float) ->
         model = parsed.get("model")
         if model is not None:
             metadata["model_id"] = model
-    if result.returncode not in {0, None} and "claude_output" not in metadata:
+    if result.returncode not in {0, None} and "pi_output" not in metadata:
         metadata["error_type"] = "infra"
     if result.stderr:
         metadata["stderr"] = result.stderr[:2000]
     return metadata
+
+
+def _parse_claude_output(result: subprocess.CompletedProcess, elapsed: float) -> dict:
+    """Backward-compatible alias for historical benchmark code."""
+    return _parse_pi_output(result, elapsed)
 
 
 def _build_cmd(
@@ -70,15 +75,15 @@ def _build_cmd(
 ) -> list[str]:
     """Build the full command for subprocess.run.
 
-    Shape: ["script", "-q", "/dev/null", "sh", "-c", "cat {prompt_file} | {claude_cmd}"]
+    Shape: ["script", "-q", "/dev/null", "sh", "-c", "cat {prompt_file} | {pi_cmd}"]
 
     *settings* is an optional path to a Claude settings JSON file.  For
     the baseline condition it is ignored (``BARE_SETTINGS`` is always used).
     For plankton, when provided, ``--settings <path>`` is appended to the
     command so that Claude Code loads the correct model/config.
     """
-    claude_args: list[str] = [
-        CLAUDE,
+    pi_args: list[str] = [
+        PI,
         "-p",
         "--dangerously-skip-permissions",
         "--disallowedTools",
@@ -90,7 +95,7 @@ def _build_cmd(
     ]
 
     if condition == "baseline":
-        claude_args[1:1] = [
+        pi_args[1:1] = [
             "--setting-sources",
             "",
             "--settings",
@@ -99,10 +104,10 @@ def _build_cmd(
             "--disable-slash-commands",
         ]
     elif settings is not None:
-        claude_args.extend(["--settings", str(settings)])
+        pi_args.extend(["--settings", str(settings)])
 
-    claude_cmd = " ".join(shlex.quote(str(a)) for a in claude_args)
-    shell_cmd = f"cat {shlex.quote(str(prompt_file))} | {claude_cmd}"
+    pi_cmd = " ".join(shlex.quote(str(a)) for a in pi_args)
+    shell_cmd = f"cat {shlex.quote(str(prompt_file))} | {pi_cmd}"
     return ["script", "-q", "/dev/null", "sh", "-c", shell_cmd]
 
 
@@ -194,7 +199,7 @@ def solve(
             env=env,
         )
         elapsed = time.time() - start
-        metadata = _parse_claude_output(result, elapsed)
+        metadata = _parse_pi_output(result, elapsed)
         patch = _extract_patch(repo_dir, original_sha)
     except subprocess.TimeoutExpired:
         elapsed = time.time() - start

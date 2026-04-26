@@ -27,33 +27,33 @@ def test_checks_list_has_11_entries():
     assert len(CHECKS) == 11
 
 
-# --- Test 3: check_claude_version passes for >= 2.1.50 ---
-def test_claude_version_pass():
-    from benchmark.swebench.prereqs import check_claude_version
+# --- Test 3: check_pi_version passes for >= 2.1.50 ---
+def test_pi_version_pass():
+    from benchmark.swebench.prereqs import check_pi_version
 
     fake_run = lambda *a, **kw: subprocess.CompletedProcess(args=[], returncode=0, stdout="2.1.50\n", stderr="")
-    r = check_claude_version(run_fn=fake_run)
+    r = check_pi_version(run_fn=fake_run)
     assert r.passed is True
     assert r.step == 1
 
 
-# --- Test 4: check_claude_version fails for < 2.1.50 ---
-def test_claude_version_fail_old():
-    from benchmark.swebench.prereqs import check_claude_version
+# --- Test 4: check_pi_version fails for < 2.1.50 ---
+def test_pi_version_fail_old():
+    from benchmark.swebench.prereqs import check_pi_version
 
     fake_run = lambda *a, **kw: subprocess.CompletedProcess(args=[], returncode=0, stdout="2.0.0\n", stderr="")
-    r = check_claude_version(run_fn=fake_run)
+    r = check_pi_version(run_fn=fake_run)
     assert r.passed is False
 
 
-# --- Test 5: check_claude_version fails when claude not found ---
-def test_claude_version_not_found():
-    from benchmark.swebench.prereqs import check_claude_version
+# --- Test 5: check_pi_version fails when pi not found ---
+def test_pi_version_not_found():
+    from benchmark.swebench.prereqs import check_pi_version
 
     def bad_run(*a, **kw):
-        raise FileNotFoundError("claude not found")
+        raise FileNotFoundError("pi not found")
 
-    r = check_claude_version(run_fn=bad_run)
+    r = check_pi_version(run_fn=bad_run)
     assert r.passed is False
     assert "not found" in r.detail.lower()
 
@@ -92,7 +92,7 @@ def test_bare_alias_fail_no_file(tmp_path: Path):
 def test_hooks_present_pass(tmp_path: Path):
     from benchmark.swebench.prereqs import check_hooks_present
 
-    hooks_dir = tmp_path / ".claude" / "hooks"
+    hooks_dir = tmp_path / ".plankton" / "hooks"
     hooks_dir.mkdir(parents=True)
     (hooks_dir / "lint.sh").write_text("#!/bin/bash\n")
     (tmp_path / ".ruff.toml").write_text("")
@@ -106,7 +106,7 @@ def test_hooks_present_pass(tmp_path: Path):
 def test_hooks_present_missing_ty_toml(tmp_path: Path):
     from benchmark.swebench.prereqs import check_hooks_present
 
-    hooks_dir = tmp_path / ".claude" / "hooks"
+    hooks_dir = tmp_path / ".plankton" / "hooks"
     hooks_dir.mkdir(parents=True)
     (hooks_dir / "lint.sh").write_text("#!/bin/bash\n")
     (tmp_path / ".ruff.toml").write_text("")
@@ -135,21 +135,21 @@ def test_baseline_no_hooks_pass(tmp_path: Path):
     assert r.step == 4
 
 
-# --- Test 11: check_claude_md_renamed passes when absent ---
-def test_claude_md_renamed_pass(tmp_path: Path):
-    from benchmark.swebench.prereqs import check_claude_md_renamed
+# --- Test 11: check_pi_md_renamed passes when absent ---
+def test_pi_md_renamed_pass(tmp_path: Path):
+    from benchmark.swebench.prereqs import check_pi_md_renamed
 
-    r = check_claude_md_renamed(plankton_root=tmp_path)
+    r = check_pi_md_renamed(plankton_root=tmp_path)
     assert r.passed is True
     assert r.step == 5
 
 
-# --- Test 12: check_claude_md_renamed fails when present ---
-def test_claude_md_renamed_fail(tmp_path: Path):
-    from benchmark.swebench.prereqs import check_claude_md_renamed
+# --- Test 12: check_pi_md_renamed fails when present ---
+def test_pi_md_renamed_fail(tmp_path: Path):
+    from benchmark.swebench.prereqs import check_pi_md_renamed
 
-    (tmp_path / "CLAUDE.md").write_text("# Claude")
-    r = check_claude_md_renamed(plankton_root=tmp_path)
+    (tmp_path / "CLAUDE.md").write_text("# Pi")
+    r = check_pi_md_renamed(plankton_root=tmp_path)
     assert r.passed is False
 
 
@@ -183,7 +183,7 @@ def test_eval_harness_fail():
 def test_subprocess_permission_fix_pass(tmp_path: Path):
     from benchmark.swebench.prereqs import check_subprocess_permission_fix
 
-    hook = tmp_path / ".claude" / "hooks" / "multi_linter.sh"
+    hook = tmp_path / ".plankton" / "hooks" / "multi_linter.sh"
     hook.parent.mkdir(parents=True)
     hook.write_text("#!/bin/bash\n# dangerously-skip-permissions\n# disallowedTools\n")
     r = check_subprocess_permission_fix(plankton_root=tmp_path)
@@ -387,10 +387,10 @@ def test_tool_blocklist_enforcement_pass():
 
 
 def test_parse_version_with_suffix():
-    """Should parse '2.1.52 (Claude Code)' as (2, 1, 52)."""
+    """Should parse '2.1.52 (Pi)' as (2, 1, 52)."""
     from benchmark.swebench.prereqs import _parse_version
 
-    assert _parse_version("2.1.52 (Claude Code)") == (2, 1, 52)
+    assert _parse_version("2.1.52 (Pi)") == (2, 1, 52)
 
 
 def test_parse_version_plain():
@@ -400,18 +400,18 @@ def test_parse_version_plain():
     assert _parse_version("2.1.50") == (2, 1, 50)
 
 
-def test_claude_version_pass_with_suffix():
+def test_pi_version_pass_with_suffix():
     """Should return True for version check with suffixed version string."""
-    from benchmark.swebench.prereqs import check_claude_version
+    from benchmark.swebench.prereqs import check_pi_version
 
     fake_run = lambda *a, **kw: subprocess.CompletedProcess(
-        args=[], returncode=0, stdout="2.1.52 (Claude Code)\n", stderr=""
+        args=[], returncode=0, stdout="2.1.52 (Pi)\n", stderr=""
     )
-    r = check_claude_version(run_fn=fake_run)
+    r = check_pi_version(run_fn=fake_run)
     assert r.passed is True
 
 
-def test_tty_workaround_default_excludes_claudecode(monkeypatch):
+def test_tty_workaround_default_excludes_picode(monkeypatch):
     """Should exclude CLAUDECODE from env in check_tty_workaround default run_fn."""
     monkeypatch.setenv("CLAUDECODE", "1")
     captured_env = {}
@@ -428,7 +428,7 @@ def test_tty_workaround_default_excludes_claudecode(monkeypatch):
     assert "CLAUDECODE" not in captured_env
 
 
-def test_large_stdin_default_excludes_claudecode(monkeypatch):
+def test_large_stdin_default_excludes_picode(monkeypatch):
     """Should exclude CLAUDECODE from env in check_large_stdin default run_fn."""
     monkeypatch.setenv("CLAUDECODE", "1")
     captured_env = {}
@@ -456,7 +456,7 @@ def test_tty_workaround_script_not_found(monkeypatch):
 
 
 # --- Test 34b: should report only missing binary in check_tty_workaround ---
-def test_tty_workaround_only_claude_missing(monkeypatch):
+def test_tty_workaround_only_pi_missing(monkeypatch):
     from benchmark.swebench.prereqs import check_tty_workaround
 
     monkeypatch.setattr(
@@ -465,7 +465,7 @@ def test_tty_workaround_only_claude_missing(monkeypatch):
     )
     r = check_tty_workaround()
     assert r.passed is False
-    assert "claude" in r.detail
+    assert "pi" in r.detail
     assert "script" not in r.detail
 
 
@@ -475,16 +475,16 @@ def test_tty_workaround_only_script_missing(monkeypatch):
 
     monkeypatch.setattr(
         "benchmark.swebench.prereqs.shutil.which",
-        lambda x: "/usr/bin/claude" if x == "claude" else None,
+        lambda x: "/usr/bin/pi" if x == "pi" else None,
     )
     r = check_tty_workaround()
     assert r.passed is False
     assert "script" in r.detail
-    assert "claude" not in r.detail
+    assert "pi" not in r.detail
 
 
-# --- Test 35: should fail gracefully when claude not found in check_large_stdin ---
-def test_large_stdin_claude_not_found(monkeypatch):
+# --- Test 35: should fail gracefully when pi not found in check_large_stdin ---
+def test_large_stdin_pi_not_found(monkeypatch):
     from benchmark.swebench.prereqs import check_large_stdin
 
     monkeypatch.setattr("benchmark.swebench.prereqs.shutil.which", lambda x: None)
@@ -531,8 +531,8 @@ def test_baseline_zero_hooks_uses_setting_sources(monkeypatch):
     assert any("bare-settings.json" in str(a) for a in cmd)
 
 
-# --- Test 38: should fail gracefully when claude not found in check_baseline_zero_hooks ---
-def test_baseline_zero_hooks_claude_not_found(monkeypatch):
+# --- Test 38: should fail gracefully when pi not found in check_baseline_zero_hooks ---
+def test_baseline_zero_hooks_pi_not_found(monkeypatch):
     from benchmark.swebench.prereqs import check_baseline_zero_hooks
 
     monkeypatch.setattr("benchmark.swebench.prereqs.shutil.which", lambda x: None)
@@ -567,7 +567,7 @@ def test_large_stdin_default_run_fn_has_timeout(monkeypatch):
 
     from benchmark.swebench.prereqs import check_large_stdin
 
-    monkeypatch.setattr("benchmark.swebench.prereqs.shutil.which", lambda x: "/usr/bin/claude")
+    monkeypatch.setattr("benchmark.swebench.prereqs.shutil.which", lambda x: "/usr/bin/pi")
     captured: dict = {}
 
     def fake_run(cmd, **kwargs):
@@ -586,7 +586,7 @@ def test_tool_blocklist_default_run_fn_has_timeout(monkeypatch):
 
     from benchmark.swebench.prereqs import check_tool_blocklist_enforcement
 
-    monkeypatch.setattr("benchmark.swebench.prereqs.shutil.which", lambda x: "/usr/bin/claude")
+    monkeypatch.setattr("benchmark.swebench.prereqs.shutil.which", lambda x: "/usr/bin/pi")
     captured: dict = {}
 
     def fake_run(cmd, **kwargs):
@@ -606,7 +606,7 @@ def test_tty_workaround_timeout_returns_fail():
     from benchmark.swebench.prereqs import check_tty_workaround
 
     def hanging_run():
-        raise subprocess.TimeoutExpired(cmd="claude", timeout=30)
+        raise subprocess.TimeoutExpired(cmd="pi", timeout=30)
 
     r = check_tty_workaround(run_fn=hanging_run)
     assert r.passed is False
@@ -621,7 +621,7 @@ def test_large_stdin_timeout_returns_fail():
     from benchmark.swebench.prereqs import check_large_stdin
 
     def hanging_run():
-        raise subprocess.TimeoutExpired(cmd="claude", timeout=30)
+        raise subprocess.TimeoutExpired(cmd="pi", timeout=30)
 
     r = check_large_stdin(run_fn=hanging_run)
     assert r.passed is False
@@ -636,7 +636,7 @@ def test_tool_blocklist_timeout_returns_fail():
     from benchmark.swebench.prereqs import check_tool_blocklist_enforcement
 
     def hanging_run():
-        raise subprocess.TimeoutExpired(cmd="claude", timeout=30)
+        raise subprocess.TimeoutExpired(cmd="pi", timeout=30)
 
     r = check_tool_blocklist_enforcement(run_fn=hanging_run)
     assert r.passed is False

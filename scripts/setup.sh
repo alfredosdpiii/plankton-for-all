@@ -298,7 +298,7 @@ verify_setup() {
 
   echo ""
   if ${all_ok}; then
-    ok "All tools installed. Run: claude"
+    ok "All tools installed. Run: pi"
   else
     fail "Some tools are missing. Check the output above."
     exit 1

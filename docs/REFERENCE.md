@@ -1,7 +1,7 @@
 # Plankton - Multi-Linter Hook System
 
-Architecture and reference documentation for the Claude Code hooks that provide
-automated code quality enforcement. The hook scripts live in `.claude/hooks/`.
+Architecture and reference documentation for the Pi hooks that provide
+automated code quality enforcement. The hook scripts live in `.plankton/hooks/`.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ protect_linter_configs.sh  enforce_package_managers.sh  multi_linter.sh  stop_co
                                                                 {decision: approve/block}
                                                     |         |         |
                                                     v         v         v
-                                                 Format   violations  claude -p
+                                                 Format   violations  pi -p
                                                  applied  as JSON     subprocess
                                                               |         |
                                                               +----+----+
@@ -46,7 +46,7 @@ protect_linter_configs.sh  enforce_package_managers.sh  multi_linter.sh  stop_co
 
   +-----------+        +-----------+        +-----------+
   |MAIN AGENT |        |   HOOK    |        | SUBPROCESS|
-  | (Claude)  |        |  (bash)   |        |(claude -p)|
+  | (Pi)  |        |  (bash)   |        |(pi -p)|
   +-----+-----+        +-----+-----+        +-----+-----+
         |                    |                    |
         | Edit tool invoked  |                    |
@@ -90,7 +90,7 @@ The multi-linter hook uses a format-collect-delegate approach:
 ### Phase 1: Auto-Format (silent)
 
 - Applies automatic formatting to fix common issues
-- Runs silently without reporting to Claude
+- Runs silently without reporting to Pi
 - Reduces subprocess workload by ~40-50%
 
 ### Phase 2: Collect Violations (JSON)
@@ -101,7 +101,7 @@ The multi-linter hook uses a format-collect-delegate approach:
 
 ### Phase 3: Delegate + Verify
 
-- Spawns `claude -p` subprocess with violations JSON
+- Spawns `pi -p` subprocess with violations JSON
 - Subprocess uses Edit tool to fix each violation
 - After subprocess exits, re-runs Phase 1 + Phase 2 to verify
 - Exit 0 if all fixed, Exit 2 if violations remain
@@ -138,7 +138,7 @@ Edit/Write on *.py
 +--------------------------------------------------------------+
 |  PHASE 3: Delegate + Verify                                  |
 |  ------------------------------------------------------------|
-|  1. Spawn claude -p subprocess with violations JSON          |
+|  1. Spawn pi -p subprocess with violations JSON          |
 |  2. Subprocess uses Edit to fix each violation               |
 |  3. Re-run Phase 1 (ruff format + ruff check --fix)          |
 |  4. Re-run Phase 2 to count remaining violations             |
@@ -175,7 +175,7 @@ Edit/Write on *.ts/*.tsx/*.js/*.jsx/*.mjs/*.cjs/*.mts/*.cts/*.css
 +--------------------------------------------------------------+
 |  PHASE 3: Delegate + Verify                                  |
 |  ------------------------------------------------------------|
-|  1. Spawn claude -p subprocess with violations JSON          |
+|  1. Spawn pi -p subprocess with violations JSON          |
 |  2. Subprocess uses Edit to fix each violation               |
 |  3. Re-run Phase 1 (biome check --write)                     |
 |  4. Re-run Phase 2 to count remaining violations             |
@@ -201,7 +201,7 @@ Hook messages use prefixed format for severity classification:
 All hook messages use `[hook:]` prefix with severity:
 
 ```text
-[hook:error] claude binary not found, cannot delegate
+[hook:error] pi binary not found, cannot delegate
 [hook:warning] hadolint 2.10.0 < 2.12.0 (some features may not work)
 [hook:advisory] Duplicate code detected
 [hook] 3 violation(s) remain after delegation
@@ -329,7 +329,7 @@ RULES:
 | Violations remain after subprocess | `[hook] N remain` | 2 |
 | jscpd duplicates found | `[hook:advisory]...` | 0/2 |
 | hadolint too old | `[hook:warning]...` | 0/2 |
-| claude not found | `[hook:error]...` | 2 |
+| pi not found | `[hook:error]...` | 2 |
 
 ### Subprocess Visibility
 
@@ -403,7 +403,7 @@ The hook (bash script) sees:
 | 2 | Subprocess prompt | `spawn_fix_subprocess()` | has_issues | Subprocess |
 | 3 | `[hook:advisory]...` | `_handle_jscpd_ts_session()` | jscpd | stderr |
 | 4 | `[hook:warning]...` | Dockerfile handler | Old hadolint | stderr |
-| 5 | `[hook:error]...` | `spawn_fix_subprocess()` | No claude | stderr |
+| 5 | `[hook:error]...` | `spawn_fix_subprocess()` | No pi | stderr |
 | 6 | `[hook] N remain` | Main verification flow | Verify fails | stderr |
 
 ## Exit Code Strategy
@@ -477,7 +477,7 @@ completes:
 +-----------------------------------------------------------------------------+
 ```
 
-When exit code is 2, Claude Code shows:
+When exit code is 2, Pi shows:
 
 ```text
 PostToolUse:Edit hook error: Failed with non-blocking status code 2
@@ -495,7 +495,7 @@ PostToolUse:Edit hook error: Failed with non-blocking status code 2
 |           -------------------------------------------                       |
 |           Main agent: BLOCKED                                               |
 |                                                                             |
-|  T=0.1s   Claude Code executes Edit (file modified)                         |
+|  T=0.1s   Pi executes Edit (file modified)                         |
 |           Main agent: BLOCKED                                               |
 |                                                                             |
 |  T=0.2s   Hook starts                                                       |
@@ -507,7 +507,7 @@ PostToolUse:Edit hook error: Failed with non-blocking status code 2
 |  T=1.0s   Phase 2: Collect violations (ruff, ty, flake8, vulture, bandit)   |
 |           Main agent: BLOCKED                                               |
 |                                                                             |
-|  T=1.5s   Hook spawns subprocess: claude -p "..."                           |
+|  T=1.5s   Hook spawns subprocess: pi -p "..."                           |
 |           Main agent: BLOCKED                                               |
 |           Hook: BLOCKED (waiting for subprocess)                            |
 |                                                                             |
@@ -560,7 +560,7 @@ MAIN AGENT                          HOOK                              SUBPROCESS
     |                                |   collected_violations = [...]     |
     |                                |   has_issues = true                |
     |                                |                                    |
-    |                                |  claude -p "You are a code..."     |
+    |                                |  pi -p "You are a code..."     |
     |                                | ---------------------------------> |
     |                                |                                    |
     |                                |                              Subprocess
@@ -708,24 +708,24 @@ many issues silently:
 ### View registered hooks
 
 ```bash
-# In Claude Code session
+# In Pi session
 /hooks
 ```
 
 ### Debug mode
 
 ```bash
-claude --debug "hooks" --verbose
+pi --verbose "hooks" --verbose
 ```
 
 ### Test hook manually
 
 ```bash
 # Test single file
-.claude/hooks/test_hook.sh path/to/file.sh
+.plankton/test/test_hook.sh path/to/file.sh
 
 # Run comprehensive self-test suite
-.claude/hooks/test_hook.sh --self-test
+.plankton/test/test_hook.sh --self-test
 ```
 
 ### Self-Test Suite
@@ -738,7 +738,7 @@ See [Testing Guide](tests/README.md#self-test-suite) for the full test catalog.
 ### Log location
 
 ```text
-~/.claude/debug/
+~/.pi/debug/
 ```
 
 ## Investigation Principles
@@ -771,7 +771,7 @@ examples covering PostToolUse, PreToolUse, and Stop hooks.
 
 ### CC Specification (Official)
 
-Per [official Claude Code docs](https://code.claude.com/docs/en/hooks)
+Per [official Pi docs](https://code.pi.com/docs/en/hooks)
 (verified against CC v2.1.50):
 
 | Hook Type | Spec Schema | Exit Code |
@@ -797,7 +797,7 @@ Per [official Claude Code docs](https://code.claude.com/docs/en/hooks)
 format rather than the newer `hookSpecificOutput.permissionDecision` format.
 Both work in CC v2.1.50 — the deprecated format is still accepted.
 
-**PostToolUse behavior**: Exit 0 = no issues. Exit 2 = stderr fed to Claude
+**PostToolUse behavior**: Exit 0 = no issues. Exit 2 = stderr fed to Pi
 (non-blocking, tool already ran).
 
 > **Known behavior (CC v2.1.50)**: PostToolUse output does not appear
@@ -807,7 +807,7 @@ Both work in CC v2.1.50 — the deprecated format is still accepted.
 ## Hook Invocation Behavior
 
 The PreToolUse hook fires on **all** Edit/Write operations, not just protected
-files. This is by design -- Claude Code matchers only support tool names, not file
+files. This is by design -- Pi matchers only support tool names, not file
 paths.
 
 **What you see:**
@@ -829,7 +829,7 @@ for file-level logic.
 
 ## Configuration
 
-Hooks are configured in `.claude/settings.json`:
+Hooks are configured in `.pi/settings.json`:
 
 - `hooks.PreToolUse`: Command hook for file-level protection (blocks edits)
 - `hooks.PostToolUse`: Command hook for linting (Edit/Write matcher)
@@ -837,7 +837,7 @@ Hooks are configured in `.claude/settings.json`:
 
 ## Runtime Configuration (config.json)
 
-The hooks read `.claude/hooks/config.json` at startup for runtime configuration.
+The hooks read `.plankton/config.json` at startup for runtime configuration.
 If the file is missing, all features are enabled with sensible defaults.
 
 ### Configuration Options
@@ -889,7 +889,7 @@ Environment variables override config.json values:
 ### Package Manager Enforcement
 
 The `package_managers` section configures `enforce_package_managers.sh`, which
-intercepts legacy package manager commands in Claude's Bash tool before execution.
+intercepts legacy package manager commands in Pi's Bash tool before execution.
 
 **Three enforcement modes** (per ecosystem):
 
@@ -923,7 +923,7 @@ intercepts legacy package manager commands in Claude's Bash tool before executio
 **Environment variable overrides:**
 
 - `HOOK_SKIP_PM=1` — bypass all package manager enforcement for the session
-  (`HOOK_SKIP_PM=1 claude ...`)
+  (`HOOK_SKIP_PM=1 pi ...`)
 - `HOOK_DEBUG_PM=1` — log matching decisions to stderr for troubleshooting
 - `HOOK_LOG_PM=1` — log all decisions to `/tmp/.pm_enforcement_<pid>.log`
 
@@ -953,9 +953,9 @@ The hooks use a two-layer protection strategy:
   - `.oxlintrc.json`
   - `.semgrep.yml`
   - `knip.json`
-  - `.claude/hooks/*` (entire hooks directory)
-  - `.claude/settings.json` (Claude Code settings)
-  - `.claude/settings.local.json` (local overrides)
+  - `.plankton/hooks/*` (entire hooks directory)
+  - `.pi/settings.json` (Pi settings)
+  - `local Pi permissions file` (local overrides)
 - Some protected files (e.g., `biome.json`, `.oxlintrc.json`, `.semgrep.yml`,
   `knip.json`) may not yet exist in the repo but are pre-configured so they are
   immediately protected when the corresponding linter is enabled
@@ -970,7 +970,7 @@ The hooks use a two-layer protection strategy:
   1. Checks hash-based guard file for prior approval
   2. If hashes match -> allows session to end (no re-prompt)
   3. If no guard or hash mismatch -> blocks and prompts user
-  4. Claude uses AskUserQuestion to ask user
+  4. Pi uses AskUserQuestion to ask user
   5. User chooses: restore to last commit OR keep changes
   6. If keep: creates guard file with content hashes via `approve_configs.sh`
   7. If restore: runs `git checkout -- <file>` for each modified file
@@ -1021,7 +1021,7 @@ safety net for user-approved changes, allowing undo before session ends.
 |  USER INTERACTION (LLM - only AFTER detection):                         |
 |  -----------------------------------------------                        |
 |                                                                         |
-|    Claude receives reason (directive)                                   |
+|    Pi receives reason (directive)                                   |
 |           |                                                             |
 |           v                                                             |
 |    Uses AskUserQuestion tool                                            |
@@ -1065,10 +1065,10 @@ already approved config modifications within the same session:
 | Different session | None (PPID changed) | N/A | Block, prompt user |
 
 **Helper Script**: `approve_configs.sh` creates the guard file when user
-selects "Keep changes". Claude invokes it via:
+selects "Keep changes". Pi invokes it via:
 
 ```bash
-.claude/hooks/approve_configs.sh ${PPID} .yamllint .flake8
+.plankton/hooks/approve_configs.sh ${PPID} .yamllint .flake8
 ```
 
 This prevents the "flaky re-prompting" issue where the stop hook would ask
@@ -1084,7 +1084,7 @@ The Stop hook MUST return JSON matching this schema:
 ```
 
 - `decision`: "approve" (allow session to end) or "block" (prevent exit)
-- `reason`: Directive that Claude reads to know how to proceed
+- `reason`: Directive that Pi reads to know how to proceed
 - `systemMessage`: User-facing warning message (advisory)
 
 ### Field Semantics
@@ -1092,18 +1092,18 @@ The Stop hook MUST return JSON matching this schema:
 **Important**: When forcing tool use (like AskUserQuestion), put the instruction
 in `reason`, not `systemMessage`:
 
-- **`reason`**: What Claude reads for its next action. Put tool invocation
+- **`reason`**: What Pi reads for its next action. Put tool invocation
   directives here (e.g., "Use AskUserQuestion tool NOW").
 - **`systemMessage`**: Shown to the user as context. Keep brief and
   informational.
 
-Claude may ignore instructions in `systemMessage` if it has prior context about
-the changes. The `reason` field is authoritative for Claude's behavior.
+Pi may ignore instructions in `systemMessage` if it has prior context about
+the changes. The `reason` field is authoritative for Pi's behavior.
 
 **Note**: Stop hooks use the same `decision` field as PreToolUse, not `ok`.
 
 **Loop Prevention**: Stop hooks receive a `stop_hook_active` boolean
-in their input JSON. When `true`, Claude Code is continuing from a prior
+in their input JSON. When `true`, Pi is continuing from a prior
 stop hook block. Your hook MUST check this and return `{"decision": "approve"}`
 to prevent infinite loops:
 
@@ -1124,7 +1124,7 @@ Prompt hooks support an optional `model` field:
 ```json
 {
   "type": "prompt",
-  "model": "claude-sonnet-4-5-20250929",
+  "model": "pi-sonnet-4-5-20250929",
   "prompt": "...",
   "timeout": 60
 }
@@ -1141,7 +1141,7 @@ Prompt hooks support an optional `model` field:
 - `jaq` - JSON parsing (Rust jq alternative)
 - `ruff` - Python formatting and linting
 - `uv` - Python tool runner (invokes ty, pydantic, vulture, bandit, flake8-async)
-- `claude` - Claude Code CLI (for subprocess delegation)
+- `pi` - Pi CLI (for subprocess delegation)
 
 **Optional (gracefully skipped if not installed):**
 
@@ -1171,18 +1171,18 @@ delegates execution to the project's toolchain.
 Older versions will trigger a warning but still run (graceful degradation).
 Version 2.12.0+ is required for `disable-ignore-pragma` support.
 
-**claude Command Discovery:** The hook searches for claude in this order:
+**pi Command Discovery:** The hook searches for pi in this order:
 
-1. `claude` in PATH (standard install)
-2. `~/.local/bin/claude` (user install)
-3. `~/.npm-global/bin/claude` (npm global)
-4. `/usr/local/bin/claude` (system install)
+1. `pi` in PATH (standard install)
+2. `~/.local/bin/pi` (user install)
+3. `~/.npm-global/bin/pi` (npm global)
+4. `/usr/local/bin/pi` (system install)
 
-If not found, outputs `[hook:error] claude binary not found, cannot delegate`.
+If not found, outputs `[hook:error] pi binary not found, cannot delegate`.
 
 ## Phase 3 Subprocess
 
-The Phase 3 subprocess is a `claude -p` process spawned by
+The Phase 3 subprocess is a `pi -p` process spawned by
 `multi_linter.sh` to fix violations that Phase 1 auto-formatting
 cannot handle. This section consolidates all subprocess configuration.
 
@@ -1195,7 +1195,7 @@ local disallowed_flag=()
 if [[ -n "${disallowed_tools}" ]]; then
   disallowed_flag=(--disallowedTools "${disallowed_tools}")
 fi
-${timeout_cmd} env -u CLAUDECODE "${claude_cmd}" -p "${prompt}" \
+${timeout_cmd} env -u CLAUDECODE "${pi_cmd}" -p "${prompt}" \
   --dangerously-skip-permissions \
   --settings "${settings_file}" \
   "${disallowed_flag[@]}" \
@@ -1207,7 +1207,7 @@ ${timeout_cmd} env -u CLAUDECODE "${claude_cmd}" -p "${prompt}" \
 Key flags:
 
 - `env -u CLAUDECODE` — unsets `CLAUDECODE` before exec to prevent
-  "nested session" error when the hook fires inside a Claude Code session
+  "nested session" error when the hook fires inside a Pi session
 - `--dangerously-skip-permissions` — enables headless operation
   (always paired with `--disallowedTools` unless all tools allowed)
 - `--disallowedTools` — blacklist derived per tier (see Tool Scope)
@@ -1217,7 +1217,7 @@ Key flags:
 ### Tier Configuration
 
 All subprocess settings are organized into `subprocess.tiers`
-in `.claude/hooks/config.json`:
+in `.plankton/config.json`:
 
 ```json
 {
@@ -1319,18 +1319,18 @@ if config.json is missing.
 
 ### Settings File
 
-**Location**: `.claude/subprocess-settings.json` (project-local,
-inside the project's `.claude/` directory).
+**Location**: `.plankton/subprocess-settings.json` (project-local,
+inside the project's `.pi/` directory).
 
 ```json
 {
-  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "$schema": "https://json.schemastore.org/pi-code-settings.json",
   "disableAllHooks": true,
   "skipDangerousModePermissionPrompt": true
 }
 ```
 
-**Why hooks are disabled**: `claude -p` subprocesses inherit
+**Why hooks are disabled**: `pi -p` subprocesses inherit
 hooks from the parent session. Without `disableAllHooks`, the
 subprocess's Edit calls would re-trigger the PostToolUse hook,
 causing recursive subprocess spawning.
@@ -1341,17 +1341,17 @@ use a different settings file (e.g., for Z.AI provider routing):
 ```json
 {
   "subprocess": {
-    "settings_file": "~/.claude/custom-subprocess-settings.json"
+    "settings_file": "~/.pi/custom-subprocess-settings.json"
   }
 }
 ```
 
-**Auto-creation**: If `.claude/subprocess-settings.json` is missing,
+**Auto-creation**: If `.plankton/subprocess-settings.json` is missing,
 the hook auto-creates it using atomic `mktemp+mv` (safe for
 concurrent invocations). A warning is logged:
 
 ```text
-[hook:warning] created missing .claude/subprocess-settings.json
+[hook:warning] created missing .plankton/subprocess-settings.json
 ```
 
 ### Overrides
@@ -1397,7 +1397,7 @@ prompts in Phase 1.
 |  (multi_linter.sh)                                                          |
 |                                                                             |
 |  Subprocess                 Per-tier selection      Yes (subprocess.tiers)  |
-|  (claude -p)                haiku/sonnet/opus                               |
+|  (pi -p)                haiku/sonnet/opus                               |
 |                                                                             |
 |  Stop Hook                  Configurable via        Yes (in settings.json)  |
 |  (prompt type)              "model" field                                   |
@@ -1451,12 +1451,12 @@ enforcement model to balance strict standards with practical constraints:
 **CI-Scoped Paths** (must have zero violations):
 
 - `*.md` at repo root (README.md, CLAUDE.md, etc.)
-- `.claude/**/*.md` (except `.tmp/`, `plans/`, `skills/*/reports/`)
+- `.pi/**/*.md` (except `.tmp/`, `plans/`, `skills/*/reports/`)
 - `docs/**/*.md` (curated documentation)
 
 **Excluded from CI** (but still linted by hook when edited):
 
-- `.claude/.tmp/`, `.claude/plans/`, `.claude/skills/*/reports/`
+- `.pi/.tmp/`, `.pi/plans/`, `.pi/skills/*/reports/`
 - `data/`, `tmp/`
 - Build artifacts (`.venv/`, `node_modules/`)
 
@@ -1677,7 +1677,7 @@ only for Python files. Key characteristics:
   marker
 - **Threshold**: 5% duplication allowed, 10 min lines, 50 min tokens
 - **Coverage**: Scans directories configured in config.json and .jscpd.json
-- **Excludes**: Tests, data, docs, .claude/.tmp (per .jscpd.json ignore list)
+- **Excludes**: Tests, data, docs, .pi/.tmp (per .jscpd.json ignore list)
 
 This provides awareness of code duplication without disrupting development flow.
 Run `npx jscpd --config .jscpd.json` for current baseline.
@@ -1708,7 +1708,7 @@ but do not block the hook from continuing.
 ### Path Normalization for Security Linters
 
 The `is_excluded_from_security_linters()` function normalizes absolute paths
-to relative paths using `CLAUDE_PROJECT_DIR` (set automatically by Claude
+to relative paths using `PLANKTON_PROJECT_DIR` (set automatically by Pi
 Code for all hooks):
 
 ```bash
@@ -1728,13 +1728,13 @@ test layers, execution instructions, and known limitations.
 
 **Specification**: [adr-hook-integration-testing.md](specs/adr-hook-integration-testing.md)
 
-**Results**: [.claude/tests/hooks/results/RESULTS.md](../.claude/tests/hooks/results/RESULTS.md)
+**Results**: [.plankton/test/results/RESULTS.md](../.plankton/test/results/RESULTS.md)
 
 ## Known Issues
 
 ### PostToolUse Hook Output Not in tool_result (CC v2.1.50)
 
-Claude Code v2.1.50 does NOT propagate PostToolUse hook output into
+Pi v2.1.50 does NOT propagate PostToolUse hook output into
 the `tool_result` field. The tool_result contains only the Write/Edit
 success message. However, mitmproxy capture proved that stderr+exit2
 IS delivered to the model as a `<system-reminder>` tag embedded inside
@@ -1780,4 +1780,4 @@ for unknown `js_runtime` values (previously silent no-op).
 - [Ruff Formatter documentation (Astral)](https://docs.astral.sh/ruff/formatter/)
 - [Ruff Formatter announcement blog post](https://astral.sh/blog/the-ruff-formatter)
 - [Known deviations from Black (Ruff docs)](https://docs.astral.sh/ruff/formatter/black/)
-- [Claude Code Hooks reference (official)](https://code.claude.com/docs/en/hooks)
+- [Pi Hooks reference (official)](https://code.pi.com/docs/en/hooks)

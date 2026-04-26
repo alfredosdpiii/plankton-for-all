@@ -95,23 +95,23 @@ def check_hook_activity(task_results: list[dict]) -> CriterionResult:
         meta = plankton.get("metadata", {})
         if meta.get("dry_run"):
             continue
-        claude_output = meta.get("claude_output")
+        pi_output = meta.get("pi_output", meta.get("claude_output"))
         stderr = meta.get("stderr", "")
 
         # Check for hook evidence (case-insensitive)
-        claude_str = str(claude_output).lower() if claude_output is not None else ""
+        pi_str = str(pi_output).lower() if pi_output is not None else ""
         stderr_lower = stderr.lower()
-        if "posttooluse" in claude_str:
+        if "posttooluse" in pi_str:
             continue
         if "hook" in stderr_lower or "linter" in stderr_lower:
             continue
 
         # No evidence found in this task
-        if claude_output is None:
+        if pi_output is None:
             return CriterionResult(
                 name="hook_activity",
                 passed=False,
-                detail=f"{task['task_id']}: cannot verify: no claude_output or hook stderr",
+                detail=f"{task['task_id']}: cannot verify: no pi_output or hook stderr",
             )
         return CriterionResult(
             name="hook_activity",

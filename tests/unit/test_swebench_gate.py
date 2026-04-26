@@ -17,7 +17,7 @@ def _make_task_result(
     plankton_error=None,
     baseline_passed=None,
     plankton_passed=None,
-    plankton_claude_output=None,
+    plankton_pi_output=None,
     plankton_stderr="",
     baseline_elapsed=30.0,
     plankton_elapsed=90.0,
@@ -34,8 +34,8 @@ def _make_task_result(
         plankton_meta["error_type"] = plankton_error_type
     if plankton_error is not None:
         plankton_meta["error"] = plankton_error
-    if plankton_claude_output is not None:
-        plankton_meta["claude_output"] = plankton_claude_output
+    if plankton_pi_output is not None:
+        plankton_meta["pi_output"] = plankton_pi_output
 
     return {
         "task_id": task_id,
@@ -130,10 +130,10 @@ class TestCheckHookActivity:
     """Test criterion 3: plankton condition shows hook evidence."""
 
     def test_passes_when_posttooluse_in_output(self) -> None:
-        """Pass when PostToolUse appears in claude output."""
+        """Pass when PostToolUse appears in pi output."""
         from benchmark.swebench.gate import check_hook_activity
 
-        result = check_hook_activity([_make_task_result(plankton_claude_output="some PostToolUse event")])
+        result = check_hook_activity([_make_task_result(plankton_pi_output="some PostToolUse event")])
         assert result.passed is True
 
     def test_passes_when_hook_in_stderr(self) -> None:
@@ -162,7 +162,7 @@ class TestCheckHookActivity:
         from benchmark.swebench.gate import check_hook_activity
 
         result = check_hook_activity(
-            [_make_task_result(plankton_claude_output="nothing relevant", plankton_stderr="clean")]
+            [_make_task_result(plankton_pi_output="nothing relevant", plankton_stderr="clean")]
         )
         assert result.passed is False
 
@@ -197,7 +197,7 @@ class TestCheckHookActivity:
                 "task_id": "t1",
                 "conditions": {"plankton": {"metadata": {"dry_run": True}}},
             },
-            _make_task_result(task_id="t2", plankton_claude_output="PostToolUse event"),
+            _make_task_result(task_id="t2", plankton_pi_output="PostToolUse event"),
         ]
         result = check_hook_activity(task_results)
         assert result.passed is True
@@ -291,7 +291,7 @@ class TestRunGate:
         """Return a passing task result for the given task."""
         return _make_task_result(
             task_id=task["instance_id"],
-            plankton_claude_output="PostToolUse event",
+            plankton_pi_output="PostToolUse event",
             baseline_passed=True,
             plankton_passed=True,
         )

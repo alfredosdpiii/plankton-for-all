@@ -22,6 +22,6 @@ assignees: ''
 ## environment
 
 - OS:
-- Claude Code version (`claude --version`):
+- Pi version (`pi --version`):
 - Plankton branch/commit:
 - Relevant tools installed (`ruff --version`, `biome --version`, etc.):

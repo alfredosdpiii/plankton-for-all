@@ -3,8 +3,8 @@
 ## TL;DR
 
 - **Purpose**: Reusable template (Plankton) for automated code
-  quality enforcement via Claude Code hooks
-- **Scope**: Hook scripts (`.claude/hooks/`), linter configs,
+  quality enforcement via Pi hooks
+- **Scope**: Hook scripts (`.plankton/hooks/`), linter configs,
   CI/pre-commit pipelines
 - **Key responsibilities**:
   - Three-phase linting (format, collect, delegate)
@@ -23,9 +23,9 @@
 - **Goals**: Portable, zero-violation baseline with
   automated enforcement in CC sessions and pre-commit
 - **Non-goals**: Runtime app code; IDE integration
-  beyond Claude Code; custom linter rule authoring
-- **Upstream**: Claude Code runtime (hook lifecycle:
-  PreToolUse, PostToolUse, Stop); `claude -p` CLI
+  beyond Pi; custom linter rule authoring
+- **Upstream**: Pi runtime (hook lifecycle:
+  PreToolUse, PostToolUse, Stop); `pi -p` CLI
 - **Downstream**: Adopting projects inherit hooks,
   linter configs, and CI pipeline
 - **Operating model**: Bash scripts run synchronously;
@@ -57,12 +57,12 @@
 
 ```mermaid
 graph TB
-    CC[Claude Code Runtime<br/>Hook Lifecycle] --> PH[PreToolUse<br/>protect_linter_configs.sh]
+    CC[Pi Runtime<br/>Hook Lifecycle] --> PH[PreToolUse<br/>protect_linter_configs.sh]
     CC --> PMH[PreToolUse<br/>enforce_package_managers.sh]
     CC --> MH[PostToolUse<br/>multi_linter.sh]
     CC --> SH[Stop<br/>stop_config_guardian.sh]
 
-    MH --> SP[claude -p Subprocess<br/>Fix Violations]
+    MH --> SP[pi -p Subprocess<br/>Fix Violations]
     MH --> LT[Linter Tools<br/>ruff, shellcheck, biome, etc.]
 
     SH --> GIT[git diff<br/>Change Detection]
@@ -95,7 +95,7 @@ graph TD
     P2 --> CHK{Violations?}
 
     CHK -->|None| EXIT0[Exit 0<br/>Silent Success]
-    CHK -->|Found| P3[Phase 3: Delegate<br/>claude -p subprocess]
+    CHK -->|Found| P3[Phase 3: Delegate<br/>pi -p subprocess]
 
     P3 --> VERIFY[Verify: Rerun<br/>Phase 1 + Phase 2]
     VERIFY --> VCHK{Remaining?}
@@ -124,7 +124,7 @@ graph TB
     end
 
     subgraph "Configuration Layer"
-        SETTINGS[.claude/settings.json<br/>Hook Registration]
+        SETTINGS[.pi/settings.json<br/>Hook Registration]
         CONFIG[config.json<br/>Runtime Config]
         CLAUDE_MD[CLAUDE.md<br/>Behavioral Instructions]
     end
@@ -165,7 +165,7 @@ graph TB
 
 ### multi_linter.sh (PostToolUse Hook)
 
-- **Location**: `.claude/hooks/multi_linter.sh` (~1,677 lines)
+- **Location**: `.plankton/hooks/multi_linter.sh` (~1,677 lines)
 - **Responsibilities**:
   - Dispatches files to language-specific handlers based on extension
   - Runs three-phase lint: format, collect
@@ -176,10 +176,10 @@ graph TB
   - Reads `config.json` at startup for language toggles, phase control, model patterns
   - Collects violations into a unified JSON array
     `{line, column, code, message, linter}`
-  - Spawns `claude -p` with no-hooks settings to
+  - Spawns `pi -p` with no-hooks settings to
     prevent recursion
   - Verification pass re-runs Phase 1 + Phase 2 after subprocess exits
-- **Inputs**: stdin JSON `{"tool_input": {"file_path": "..."}}` from Claude Code
+- **Inputs**: stdin JSON `{"tool_input": {"file_path": "..."}}` from Pi
 - **Outputs**: Exit 0 (clean) or exit 2 + stderr message (violations remain)
 - **Delivery**: Exit 2 + stderr output is delivered to the model as a
   `<system-reminder>` tag embedded inside the `tool_result.content` string
@@ -188,17 +188,17 @@ graph TB
 
 ### protect_linter_configs.sh (PreToolUse Hook)
 
-- **Location**: `.claude/hooks/protect_linter_configs.sh` (~164 lines)
+- **Location**: `.plankton/hooks/protect_linter_configs.sh` (~164 lines)
 - **Responsibilities**: Blocks Edit/Write on protected config files and hook scripts
 - **Implementation**: Extracts file path from stdin
   JSON, matches against `config.json` protected list
-  or `.claude/` patterns. Returns block or approve
+  or `.pi/` patterns. Returns block or approve
 - **Notes**: Fires on all Edit/Write; fast-path
   approval for non-protected files
 
 ### stop_config_guardian.sh (Stop Hook)
 
-- **Location**: `.claude/hooks/stop_config_guardian.sh` (~162 lines)
+- **Location**: `.plankton/hooks/stop_config_guardian.sh` (~162 lines)
 - **Responsibilities**: Detects modified config files
   at session end; prompts user to keep or restore
 - **Implementation**: `git diff --name-only` (no LLM).
@@ -209,7 +209,7 @@ graph TB
 
 ### config.json (Runtime Configuration)
 
-- **Location**: `.claude/hooks/config.json` (~91 lines)
+- **Location**: `.plankton/config.json` (~91 lines)
 - **Responsibilities**: Central config for all hooks -
   language toggles, protected files, security-linter exclusions,
   phase control, model patterns, jscpd settings,
@@ -230,7 +230,7 @@ graph TB
 
 ### enforce_package_managers.sh (PreToolUse Hook)
 
-- **Location**: `.claude/hooks/enforce_package_managers.sh` (~705 lines)
+- **Location**: `.plankton/hooks/enforce_package_managers.sh` (~705 lines)
 - **Responsibilities**: Intercepts legacy package manager
   commands in Bash tool and blocks or warns, suggesting
   project-preferred alternatives (uv for Python, bun for JS)
@@ -245,7 +245,7 @@ graph TB
 
 ### test_hook.sh (Debug/Test Utility)
 
-- **Location**: `.claude/hooks/test_hook.sh` (~2,089 lines)
+- **Location**: `.plankton/test/test_hook.sh` (~2,089 lines)
 - **Responsibilities**: Self-test suite covering all
   file types, model selection, TS handling, config
   protection, and edge cases
@@ -258,7 +258,7 @@ graph TB
 - **Violation schema**: `{line, column, code,
   message, linter}` — all handlers convert to this
   format during Phase 2 collection (see `multi_linter.sh`)
-- **Hook input**: `{"tool_input": {"file_path": string}}` from Claude Code via stdin
+- **Hook input**: `{"tool_input": {"file_path": string}}` from Pi via stdin
 - **PreToolUse output**: `{"decision": "approve"|"block", "reason"?: string}`
 - **Stop output**: `{"decision": "approve"|"block",
   "reason"?, "systemMessage"?}`
@@ -269,11 +269,11 @@ graph TB
 
 ## Operations
 
-- **Environments**: Local dev with Claude Code;
+- **Environments**: Local dev with Pi;
   CI via GitHub Actions (`lint` + `test` jobs)
 - **Configuration**: `config.json` for hooks;
-  `.claude/settings.json` for registration;
-  `.claude/settings.local.json` for overrides
+  `.pi/settings.json` for registration;
+  `local Pi permissions file` for overrides
 - **Observability**: `HOOK_DEBUG_MODEL=1` for model
   selection; `HOOK_SKIP_SUBPROCESS=1` skips delegation;
   `--self-test` for automated validation
@@ -291,7 +291,7 @@ graph TB
 - **Security scanning**: Bandit + Semgrep detect common
   vulnerabilities; test paths excluded to reduce noise
 - **Path normalization**: Absolute paths normalized via
-  `CLAUDE_PROJECT_DIR` for consistent exclusion matching
+  `PLANKTON_PROJECT_DIR` for consistent exclusion matching
 - **Atomic file ops**: Settings auto-creation uses
   `mktemp + mv` for concurrent safety
 
@@ -331,8 +331,8 @@ See [01-testing-infrastructure.md](01-testing-infrastructure.md)
 for the full testing PSF covering all 5 test layers, fixtures,
 CI pipeline, and 303+ automated checks.
 
-- **Quick reference**: `bash .claude/hooks/test_hook.sh --self-test`
-  (113 cases), `bash .claude/tests/hooks/verify_feedback_loop.sh`
+- **Quick reference**: `bash .plankton/test/test_hook.sh --self-test`
+  (113 cases), `bash .plankton/test/verify_feedback_loop.sh`
   (28 checks), `bash tests/stress/run_stress_tests.sh` (133 tests),
   `.venv/bin/pytest tests/` (345 tests: 315 unit + 30 integration);
   hook investigation tests: `test_nursery_config.sh` (3 tests),
@@ -350,7 +350,7 @@ CI pipeline, and 303+ automated checks.
 | --- | --- | --- |
 | `jaq` | JSON parsing in hooks | Required; Rust `jq` alternative |
 | `ruff` | Python format + lint | Required; 30x faster than Black |
-| `claude` CLI | Subprocess delegation | Required for Phase 3 |
+| `pi` CLI | Subprocess delegation | Required for Phase 3 |
 | `ty` | Python type checking | Optional; Astral Rust-based |
 | `shellcheck` | Shell linting | Optional; `shfmt` for formatting |
 | `biome` | TS/JS/CSS lint + format | Optional; via npm/npx/pnpm/bun |
@@ -414,7 +414,7 @@ for the full benchmark PSF covering all 8 modules, the CLI,
   message policy hook enforcing AI attribution rules
 - **`tests/stress/run_stress_tests.sh`**: Stress test
   suite for hook performance under load
-- **`.claude/tests/hooks/`**: Integration test suite
+- **`.plankton/test/`**: Integration test suite
   infrastructure (103 tests across 3 agents, JSONL results)
   plus diagnostic scripts (see Testing & Quality)
 - **`docs/specs/adr-*.md`**: Architecture Decision Records
@@ -469,7 +469,7 @@ for the full benchmark PSF covering all 8 modules, the CLI,
   run once per session after a file count threshold
 - **SFC**: Single-File Components (`.vue`, `.svelte`,
   `.astro`) — Semgrep-only coverage
-- **Subprocess delegation**: Spawning `claude -p`
+- **Subprocess delegation**: Spawning `pi -p`
   to autonomously fix collected violations
 - **Volume threshold**: Violation count (default 5)
   above which opus model is selected

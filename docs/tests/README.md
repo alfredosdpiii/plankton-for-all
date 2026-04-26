@@ -1,6 +1,6 @@
 # Hook Testing Guide
 
-Testing reference for the Claude Code hooks in `.claude/hooks/`.
+Testing reference for the Pi hooks in `.plankton/hooks/`.
 Architecture and runtime docs live in [docs/REFERENCE.md](../REFERENCE.md).
 
 ## Self-Test Suite
@@ -8,7 +8,7 @@ Architecture and runtime docs live in [docs/REFERENCE.md](../REFERENCE.md).
 The `--self-test` flag runs automated tests covering all hooks:
 
 ```bash
-.claude/hooks/test_hook.sh --self-test
+.plankton/test/test_hook.sh --self-test
 ```
 
 ### Multi-Linter Tests
@@ -115,7 +115,7 @@ The `--self-test` flag runs automated tests covering all hooks:
 - `pip diag + pipenv install` -> blocked (cross-tool)
 - `poetry diag + poetry add` -> blocked
 
-Tests use temp files for content creation and `CLAUDE_PROJECT_DIR` override
+Tests use temp files for content creation and `PLANKTON_PROJECT_DIR` override
 for TypeScript-enabled config isolation.
 
 ## Testing Hooks Manually
@@ -126,7 +126,7 @@ for TypeScript-enabled config isolation.
 # Test Python handler (should exit 0 for clean file)
 echo 'def foo(): pass' > /tmp/test.py
 echo '{"tool_input": {"file_path": "/tmp/test.py"}}' \
-  | bash .claude/hooks/multi_linter.sh
+  | bash .plankton/hooks/multi_linter.sh
 echo "Exit: $?"
 
 # Test with violations - use HOOK_SKIP_SUBPROCESS for deterministic exit codes
@@ -136,7 +136,7 @@ def f(a,b,c,d,e,f,g,h,i,j,k):
     if a: return b
 EOF
 echo '{"tool_input": {"file_path": "/tmp/complex.py"}}' \
-  | HOOK_SKIP_SUBPROCESS=1 bash .claude/hooks/multi_linter.sh
+  | HOOK_SKIP_SUBPROCESS=1 bash .plankton/hooks/multi_linter.sh
 echo "Exit: $?"  # Exit 2 (violations reported, subprocess skipped)
 ```
 
@@ -145,22 +145,22 @@ echo "Exit: $?"  # Exit 2 (violations reported, subprocess skipped)
 ```bash
 # Protected linter config (should return decision: block)
 echo '{"tool_input": {"file_path": ".yamllint"}}' \
-  | bash .claude/hooks/protect_linter_configs.sh
+  | bash .plankton/hooks/protect_linter_configs.sh
 # Expected: {"decision": "block", "reason": "Protected linter config file..."}
 
 # Protected hook script (should return decision: block)
-echo '{"tool_input": {"file_path": ".claude/hooks/multi_linter.sh"}}' \
-  | bash .claude/hooks/protect_linter_configs.sh
-# Expected: {"decision": "block", "reason": "Protected Claude Code config..."}
+echo '{"tool_input": {"file_path": ".plankton/hooks/multi_linter.sh"}}' \
+  | bash .plankton/hooks/protect_linter_configs.sh
+# Expected: {"decision": "block", "reason": "Protected Pi config..."}
 
 # Protected settings (should return decision: block)
-echo '{"tool_input": {"file_path": ".claude/settings.json"}}' \
-  | bash .claude/hooks/protect_linter_configs.sh
-# Expected: {"decision": "block", "reason": "Protected Claude Code config..."}
+echo '{"tool_input": {"file_path": ".pi/settings.json"}}' \
+  | bash .plankton/hooks/protect_linter_configs.sh
+# Expected: {"decision": "block", "reason": "Protected Pi config..."}
 
 # Normal file (should return decision: approve)
 echo '{"tool_input": {"file_path": "/tmp/normal.py"}}' \
-  | bash .claude/hooks/protect_linter_configs.sh
+  | bash .plankton/hooks/protect_linter_configs.sh
 # Expected: {"decision": "approve"}
 ```
 
@@ -168,16 +168,16 @@ echo '{"tool_input": {"file_path": "/tmp/normal.py"}}' \
 
 ```bash
 # No modifications - should approve
-echo '{"stop_hook_active": false}' | bash .claude/hooks/stop_config_guardian.sh
+echo '{"stop_hook_active": false}' | bash .plankton/hooks/stop_config_guardian.sh
 # Expected: {"decision": "approve"}
 
 # With modifications (first invocation) - should block
 echo "# test" >> .yamllint
-echo '{"stop_hook_active": false}' | bash .claude/hooks/stop_config_guardian.sh
+echo '{"stop_hook_active": false}' | bash .plankton/hooks/stop_config_guardian.sh
 # Expected: {"decision": "block", "reason": "...", "systemMessage": "..."}
 
 # Loop prevention (second invocation) - should approve
-echo '{"stop_hook_active": true}' | bash .claude/hooks/stop_config_guardian.sh
+echo '{"stop_hook_active": true}' | bash .plankton/hooks/stop_config_guardian.sh
 # Expected: {"decision": "approve"}
 
 # Restore after test
@@ -186,7 +186,7 @@ git checkout -- .yamllint
 
 ### Integration test (requires session restart)
 
-1. Start new Claude Code session
+1. Start new Pi session
 2. Approve an edit to a protected config file
 3. End session (Ctrl+C or /exit)
 4. Stop hook should trigger, asking to restore
@@ -210,7 +210,7 @@ Example usage:
 ```bash
 # Test model selection without spawning subprocess
 echo '{"tool_input": {"file_path": "/tmp/test.py"}}' \
-  | HOOK_SKIP_SUBPROCESS=1 HOOK_DEBUG_MODEL=1 .claude/hooks/multi_linter.sh
+  | HOOK_SKIP_SUBPROCESS=1 HOOK_DEBUG_MODEL=1 .plankton/hooks/multi_linter.sh
 # Output: [hook:model] haiku
 ```
 
@@ -239,11 +239,11 @@ There are **TWO** debug output blocks for model selection:
 
 The hook system has a 103-test integration suite that exercises all four hooks
 via their real stdin/stdout contracts. The suite runs as three parallel agents
-using Claude Code's TeamCreate feature.
+using Pi's TeamCreate feature.
 
 **Specification**: [adr-hook-integration-testing.md](../specs/adr-hook-integration-testing.md)
 
-**Results**: [.claude/tests/hooks/results/RESULTS.md](../../.claude/tests/hooks/results/RESULTS.md)
+**Results**: [.plankton/test/results/RESULTS.md](../../.plankton/test/results/RESULTS.md)
 
 ### Suite Structure
 
@@ -261,7 +261,7 @@ teammate context (teammates fire `TeammateIdle`, not `Stop`).
 ### Two Test Layers
 
 - **Layer 1 (stdin/stdout)**: Pipe JSON to the hook script, capture exit
-  code and output. This is the real execution path -- identical to how Claude
+  code and output. This is the real execution path -- identical to how Pi
   Code delivers input to hooks.
 - **Layer 2 (live trigger)**: Invoke an actual tool call (Edit or Bash) and
   observe whether the hook fires via the tool result.
@@ -280,7 +280,7 @@ Phase 3: Aggregate JSONL, write RESULTS.md
 Phase 4: Compare with archived previous run (if available)
 ```
 
-Results are written as JSONL to `.claude/tests/hooks/results/` with one file
+Results are written as JSONL to `.plankton/test/results/` with one file
 per agent. The aggregation command (`jaq -s`) produces pass/fail/skip counts
 across all 103 tests.
 
@@ -288,17 +288,17 @@ across all 103 tests.
 
 **PreToolUse hooks do not fire for TeamCreate teammate Bash tool calls**:
 When a teammate agent uses the Bash tool, PreToolUse hooks registered in
-`.claude/settings.json` are not triggered. This means P28 (live trigger
+`.pi/settings.json` are not triggered. This means P28 (live trigger
 for `enforce_package_managers.sh`) cannot be validated in a teammate
 session. PostToolUse hooks DO fire for teammate Edit/Write tool calls
-(confirmed by M19). This is a Claude Code agent teams architecture
+(confirmed by M19). This is a Pi agent teams architecture
 constraint, not a hook defect -- all 31 direct invocation tests confirm
 the hook logic is correct.
 
 **subprocess-settings.json path**: The subprocess prevention settings file
-lives at `.claude/subprocess-settings.json` (user home directory). The
+lives at `.plankton/subprocess-settings.json` (user home directory). The
 integration test spec (DEP14) must check this path, not the project-local
-`.claude/subprocess-settings.json`. The hook auto-creates this file if
+`.plankton/subprocess-settings.json`. The hook auto-creates this file if
 missing (see [REFERENCE.md: Settings File Auto-Creation](../REFERENCE.md#settings-file-auto-creation)).
 
 **Stop hook untestable via TeamCreate**: The `stop_config_guardian.sh` hook
@@ -309,13 +309,13 @@ stop hook requires a manual session
 
 ## Regression Testing After Hook Changes
 
-After modifying `.claude/hooks/multi_linter.sh`, run these tests
+After modifying `.plankton/hooks/multi_linter.sh`, run these tests
 to verify no regressions:
 
 1. **Self-test suite** (structural + functional):
 
    ```bash
-   bash .claude/hooks/test_hook.sh --self-test
+   bash .plankton/test/test_hook.sh --self-test
    ```
 
    Expected: 110+ pass, 2 known failures (Python valid file
@@ -324,7 +324,7 @@ to verify no regressions:
 2. **Feedback loop verification** (all file types):
 
    ```bash
-   bash .claude/tests/hooks/verify_feedback_loop.sh
+   bash .plankton/test/verify_feedback_loop.sh
    ```
 
    Expected: 28+ pass, 0 fail. Skips are OK for linters not
@@ -333,16 +333,16 @@ to verify no regressions:
 3. **Production path** (subprocess delegation with mock):
 
    ```bash
-   bash .claude/tests/hooks/test_production_path.sh
+   bash .plankton/test/test_production_path.sh
    ```
 
    Tests the full subprocess delegation flow using a mock
-   `claude` binary. No API access required.
+   `pi` binary. No API access required.
 
 4. **Five-channel output verification**:
 
    ```bash
-   bash .claude/tests/hooks/test_five_channels.sh
+   bash .plankton/test/test_five_channels.sh
    ```
 
    Automated channel output tests. Use `--runbook` flag for

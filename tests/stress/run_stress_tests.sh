@@ -19,7 +19,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-HOOK_DIR="${PROJECT_DIR}/.claude/hooks"
+HOOK_DIR="${PROJECT_DIR}/.plankton/hooks"
 MULTI_LINTER="${HOOK_DIR}/multi_linter.sh"
 PROTECT_CONFIGS="${HOOK_DIR}/protect_linter_configs.sh"
 STOP_GUARDIAN="${HOOK_DIR}/stop_config_guardian.sh"
@@ -160,7 +160,7 @@ run_multi_linter() {
   LAST_STDERR=$(echo "${json}" \
     | HOOK_SKIP_SUBPROCESS=1 \
       HOOK_SESSION_PID=$$ \
-      CLAUDE_PROJECT_DIR="${proj_dir}" \
+      PLANKTON_PROJECT_DIR="${proj_dir}" \
       bash "${MULTI_LINTER}" 2>&1 >/dev/null)
   LAST_EXIT=$?
   set -e
@@ -178,7 +178,7 @@ run_multi_linter_model() {
     | HOOK_SKIP_SUBPROCESS=1 \
       HOOK_DEBUG_MODEL=1 \
       HOOK_SESSION_PID=$$ \
-      CLAUDE_PROJECT_DIR="${proj_dir}" \
+      PLANKTON_PROJECT_DIR="${proj_dir}" \
       bash "${MULTI_LINTER}" 2>&1 >/dev/null)
   LAST_EXIT=$?
   set -e
@@ -192,7 +192,7 @@ run_protect() {
   local proj_dir="${2:-${PROJECT_DIR}}"
   local json='{"tool_input":{"file_path":"'"${file}"'"}}'
   LAST_OUTPUT=$(echo "${json}" \
-    | CLAUDE_PROJECT_DIR="${proj_dir}" \
+    | PLANKTON_PROJECT_DIR="${proj_dir}" \
       bash "${PROTECT_CONFIGS}" 2>/dev/null)
 }
 
@@ -201,7 +201,7 @@ run_protect() {
 run_stop() {
   local input_json="$1"
   local work_dir="${2:-${PROJECT_DIR}}"
-  LAST_OUTPUT=$(cd "${work_dir}" && echo "${input_json}" | CLAUDE_PROJECT_DIR="${work_dir}" bash "${STOP_GUARDIAN}" 2>/dev/null)
+  LAST_OUTPUT=$(cd "${work_dir}" && echo "${input_json}" | PLANKTON_PROJECT_DIR="${work_dir}" bash "${STOP_GUARDIAN}" 2>/dev/null)
 }
 
 # ============================================================================
@@ -211,8 +211,8 @@ run_stop() {
 # Create a TS-enabled config in a directory
 create_ts_config() {
   local dir="$1"
-  mkdir -p "${dir}/.claude/hooks"
-  cat >"${dir}/.claude/hooks/config.json" <<'TSCFG'
+  mkdir -p "${dir}/.plankton/hooks"
+  cat >"${dir}/.plankton/config.json" <<'TSCFG'
 {
   "languages": {
     "python": true, "shell": true, "yaml": true, "json": true,
@@ -250,7 +250,7 @@ TSCFG
 create_disabled_lang_config() {
   local lang="$1"
   local dir="${TEMP_DIR}/disabled_${lang}"
-  mkdir -p "${dir}/.claude/hooks"
+  mkdir -p "${dir}/.plankton/hooks"
 
   # Build JSON with specified language set to false
   # Build JSON with only the target language disabled (no duplicate keys)
@@ -271,7 +271,7 @@ create_disabled_lang_config() {
       ;;
   esac
 
-  cat >"${dir}/.claude/hooks/config.json" <<DISABLECFG
+  cat >"${dir}/.plankton/config.json" <<DISABLECFG
 {
   "languages": {
     "python": ${py}, "shell": ${sh}, "yaml": ${ym}, "json": ${js},
@@ -294,9 +294,9 @@ create_phase_config() {
   local key="$1"
   local value="$2"
   local dir="${TEMP_DIR}/phase_${key}_${value}"
-  mkdir -p "${dir}/.claude/hooks"
+  mkdir -p "${dir}/.plankton/hooks"
 
-  cat >"${dir}/.claude/hooks/config.json" <<PHASECFG
+  cat >"${dir}/.plankton/config.json" <<PHASECFG
 {
   "languages": {
     "python": true, "shell": true, "yaml": true, "json": true,
@@ -544,8 +544,8 @@ PY_DOC
   # A13: Python path exclusion (tests/ dir excluded from vulture/bandit)
   # Create a proper project dir with config so jaq does not crash
   a13_dir="${TEMP_DIR}/a13_project"
-  mkdir -p "${a13_dir}/.claude/hooks" "${a13_dir}/tests"
-  cp "${HOOK_DIR}/config.json" "${a13_dir}/.claude/hooks/config.json"
+  mkdir -p "${a13_dir}/.plankton/hooks" "${a13_dir}/tests"
+  cp "${HOOK_DIR}/config.json" "${a13_dir}/.plankton/config.json"
   f="${a13_dir}/tests/a13_excluded.py"
   cat >"${f}" <<'PY_EXCL'
 """Test module."""
@@ -1432,8 +1432,8 @@ fi
 # C11-C12: biome_nursery off/warn/error - just test off doesn't crash
 if ${HAS_BIOME}; then
   d="${TEMP_DIR}/nursery_off"
-  mkdir -p "${d}/.claude/hooks"
-  cat >"${d}/.claude/hooks/config.json" <<'NURSOFF'
+  mkdir -p "${d}/.plankton/hooks"
+  cat >"${d}/.plankton/config.json" <<'NURSOFF'
 {
   "languages": {
     "typescript": {"enabled": true, "biome_nursery": "off", "semgrep": false}
@@ -1487,28 +1487,28 @@ for pf in "${PROTECTED_FILES[@]}"; do
   fi
 done
 
-# D15: .claude/hooks/* -> block
-run_protect "/project/.claude/hooks/multi_linter.sh"
+# D15: .plankton/hooks/* -> block
+run_protect "/project/.plankton/hooks/multi_linter.sh"
 if echo "${LAST_OUTPUT}" | jaq -e '.decision == "block"' >/dev/null 2>&1; then
-  tap_ok D "D15: .claude/hooks/* -> block"
+  tap_ok D "D15: .plankton/hooks/* -> block"
 else
-  tap_fail D "D15: .claude/hooks/* -> block" "got: ${LAST_OUTPUT}"
+  tap_fail D "D15: .plankton/hooks/* -> block" "got: ${LAST_OUTPUT}"
 fi
 
-# D16: .claude/settings.json -> block
-run_protect "/project/.claude/settings.json"
+# D16: .pi/settings.json -> block
+run_protect "/project/.pi/settings.json"
 if echo "${LAST_OUTPUT}" | jaq -e '.decision == "block"' >/dev/null 2>&1; then
-  tap_ok D "D16: .claude/settings.json -> block"
+  tap_ok D "D16: .pi/settings.json -> block"
 else
-  tap_fail D "D16: .claude/settings.json -> block" "got: ${LAST_OUTPUT}"
+  tap_fail D "D16: .pi/settings.json -> block" "got: ${LAST_OUTPUT}"
 fi
 
-# D17: .claude/settings.local.json -> block
-run_protect "/project/.claude/settings.local.json"
+# D17: local Pi permissions file -> block
+run_protect "/project/local Pi permissions file"
 if echo "${LAST_OUTPUT}" | jaq -e '.decision == "block"' >/dev/null 2>&1; then
-  tap_ok D "D17: .claude/settings.local.json -> block"
+  tap_ok D "D17: local Pi permissions file -> block"
 else
-  tap_fail D "D17: .claude/settings.local.json -> block" "got: ${LAST_OUTPUT}"
+  tap_fail D "D17: local Pi permissions file -> block" "got: ${LAST_OUTPUT}"
 fi
 
 # D18: Normal file -> approve
@@ -1566,8 +1566,8 @@ mkdir -p "${STOP_DIR}"
 ) >/dev/null 2>&1
 
 # Create config for stop hook
-mkdir -p "${STOP_DIR}/.claude/hooks"
-cat >"${STOP_DIR}/.claude/hooks/config.json" <<'STOPCFG'
+mkdir -p "${STOP_DIR}/.plankton/hooks"
+cat >"${STOP_DIR}/.plankton/config.json" <<'STOPCFG'
 {
   "protected_files": [".yamllint", ".ruff.toml"]
 }
@@ -1890,8 +1890,8 @@ fi
 # G7: Biome missing -> graceful warning
 if ${HAS_BIOME}; then
   d="${TEMP_DIR}/no_biome"
-  mkdir -p "${d}/.claude/hooks"
-  cat >"${d}/.claude/hooks/config.json" <<'NOBCFG'
+  mkdir -p "${d}/.plankton/hooks"
+  cat >"${d}/.plankton/config.json" <<'NOBCFG'
 {
   "languages": {"typescript": {"enabled": true, "js_runtime": "none", "semgrep": false}},
   "phases": {"auto_format": true, "subprocess_delegation": true},
@@ -1962,8 +1962,8 @@ rm -f "/tmp/.biome_path_$$"
 
 # G11: Empty config.json — must use defaults gracefully (BUG-2 fixed)
 d="${TEMP_DIR}/empty_cfg"
-mkdir -p "${d}/.claude/hooks"
-echo '{}' >"${d}/.claude/hooks/config.json"
+mkdir -p "${d}/.plankton/hooks"
+echo '{}' >"${d}/.plankton/config.json"
 f="${d}/g11.py"
 cat >"${f}" <<'G11PY'
 """Module docstring."""
@@ -1987,8 +1987,8 @@ fi
 
 # G12: Malformed config.json
 d="${TEMP_DIR}/bad_cfg"
-mkdir -p "${d}/.claude/hooks"
-echo 'not json at all' >"${d}/.claude/hooks/config.json"
+mkdir -p "${d}/.plankton/hooks"
+echo 'not json at all' >"${d}/.plankton/config.json"
 f="${d}/g12.py"
 cat >"${f}" <<'G12PY'
 """Module docstring."""
@@ -2012,7 +2012,7 @@ fi
 
 # G13: Missing config.json entirely — must use defaults gracefully (BUG-2 fixed)
 d="${TEMP_DIR}/no_cfg"
-mkdir -p "${d}/.claude/hooks"
+mkdir -p "${d}/.plankton/hooks"
 # Don't create config.json
 f="${d}/g13.py"
 cat >"${f}" <<'G13PY'
@@ -2038,7 +2038,7 @@ fi
 # G14: Nonexistent file path
 json='{"tool_input":{"file_path":"/tmp/does_not_exist_12345.py"}}'
 set +e
-echo "${json}" | HOOK_SKIP_SUBPROCESS=1 CLAUDE_PROJECT_DIR="${PROJECT_DIR}" \
+echo "${json}" | HOOK_SKIP_SUBPROCESS=1 PLANKTON_PROJECT_DIR="${PROJECT_DIR}" \
   bash "${MULTI_LINTER}" >/dev/null 2>&1
 g14_exit=$?
 set -e
@@ -2051,7 +2051,7 @@ fi
 # G15: Directory path (not a file)
 json='{"tool_input":{"file_path":"'"${TEMP_DIR}"'"}}'
 set +e
-echo "${json}" | HOOK_SKIP_SUBPROCESS=1 CLAUDE_PROJECT_DIR="${PROJECT_DIR}" \
+echo "${json}" | HOOK_SKIP_SUBPROCESS=1 PLANKTON_PROJECT_DIR="${PROJECT_DIR}" \
   bash "${MULTI_LINTER}" >/dev/null 2>&1
 g15_exit=$?
 set -e
@@ -2309,7 +2309,7 @@ version or add defensive nil checks in the jaq pipeline.
 
 ### Path handling edge cases
 
-Files outside `CLAUDE_PROJECT_DIR` lose relative path conversion
+Files outside `PLANKTON_PROJECT_DIR` lose relative path conversion
 for biome. The `_biome_relpath()` function falls back to absolute
 paths, which biome may reject for project-scoped rules. Consider
 warning when file is outside project root.

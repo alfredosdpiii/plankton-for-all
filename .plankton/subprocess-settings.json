@@ -1,0 +1,5 @@
+{
+  "plankton": {
+    "subprocess_isolated": true
+  }
+}

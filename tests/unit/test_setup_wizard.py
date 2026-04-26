@@ -96,12 +96,27 @@ def test_has_any_finds_recursive_non_excluded_file(tmp_path: Path, monkeypatch) 
     assert setup_module._has_any("*.py") is True
 
 
+def test_detect_languages_finds_elixir_project(tmp_path: Path, monkeypatch) -> None:
+    setup_module = _load_setup_module()
+
+    (tmp_path / "mix.exs").write_text("defmodule Demo.MixProject do\nend\n", encoding="utf-8")
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / "demo.ex").write_text("defmodule Demo do\nend\n", encoding="utf-8")
+    (tmp_path / "lib" / "demo_web.heex").write_text("<div>ok</div>\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+
+    detected = setup_module.detect_languages()
+    assert detected["elixir"] is True
+
+
 def test_language_defaults_from_effective_prefers_existing_config() -> None:
     setup_module = _load_setup_module()
     effective = setup_module.build_effective_config(
         {
             "languages": {
                 "python": False,
+                "elixir": False,
                 "shell": True,
                 "dockerfile": False,
                 "yaml": True,
@@ -115,6 +130,7 @@ def test_language_defaults_from_effective_prefers_existing_config() -> None:
 
     detected = {
         "python": True,
+        "elixir": True,
         "typescript": True,
         "shell": False,
         "dockerfile": True,
@@ -127,6 +143,7 @@ def test_language_defaults_from_effective_prefers_existing_config() -> None:
     merged = setup_module.language_defaults_from_effective(detected, effective)
 
     assert merged["python"] is False
+    assert merged["elixir"] is False
     assert merged["typescript"] is False
     assert merged["shell"] is True
     assert merged["dockerfile"] is False
@@ -141,7 +158,7 @@ def test_merge_config_preserves_metadata_keys() -> None:
 
     existing = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "_comment": "Claude Code Hooks Configuration - edit this file to customize hook behavior",
+        "_comment": "Pi Hooks Configuration - edit this file to customize hook behavior",
         "custom": {"keep": True},
         "languages": {"python": False},
     }
@@ -408,6 +425,7 @@ def test_configure_languages_prompts_each_other_format(monkeypatch) -> None:
     config = setup_module.configure_languages(
         {
             "python": True,
+            "elixir": True,
             "typescript": True,
             "shell": True,
             "dockerfile": True,
@@ -418,6 +436,7 @@ def test_configure_languages_prompts_each_other_format(monkeypatch) -> None:
         }
     )
 
+    assert "Enable Elixir/Phoenix enforcement?" in prompts
     assert "Enable YAML enforcement?" in prompts
     assert "Enable JSON enforcement?" in prompts
     assert "Enable TOML enforcement?" in prompts
@@ -489,7 +508,7 @@ def test_main_no_sections_selected_does_not_rewrite_existing_config(tmp_path: Pa
     setup_module = _load_setup_module()
     monkeypatch.chdir(tmp_path)
 
-    config_path = tmp_path / ".claude" / "hooks" / "config.json"
+    config_path = tmp_path / ".plankton" / "config.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text('{"languages":{"python":false}}\n', encoding="utf-8")
     original = config_path.read_text(encoding="utf-8")
@@ -537,7 +556,7 @@ def test_setup_hooks_installs_pre_commit_when_missing(tmp_path: Path, monkeypatc
     setup_module = _load_setup_module()
     monkeypatch.chdir(tmp_path)
 
-    hooks_dir = tmp_path / ".claude" / "hooks"
+    hooks_dir = tmp_path / ".plankton" / "hooks"
     hooks_dir.mkdir(parents=True, exist_ok=True)
     (hooks_dir / "multi_linter.sh").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
     (tmp_path / ".pre-commit-config.yaml").write_text("repos: []\n", encoding="utf-8")
@@ -878,6 +897,7 @@ def test_configure_selected_sections_only_updates_selected(monkeypatch) -> None:
     effective = setup_module.build_effective_config({})
     language_defaults = {
         "python": True,
+        "elixir": True,
         "typescript": True,
         "shell": True,
         "dockerfile": True,

@@ -71,7 +71,7 @@ class TestInjectHooks:
         from benchmark.swebench.runner import inject_hooks
 
         inject_hooks(tmp_path, plankton_root=PLANKTON_ROOT)
-        assert (tmp_path / ".claude" / "hooks" / "multi_linter.sh").exists()
+        assert (tmp_path / ".plankton" / "hooks" / "multi_linter.sh").exists()
 
     def test_inject_hooks_copies_linter_configs(self, tmp_path: Path) -> None:
         """Verify linter config files are copied."""
@@ -86,7 +86,7 @@ class TestInjectHooks:
 
         inject_hooks(tmp_path, plankton_root=PLANKTON_ROOT)
         remove_hooks(tmp_path)
-        assert not (tmp_path / ".claude" / "hooks").exists()
+        assert not (tmp_path / ".plankton" / "hooks").exists()
         assert not (tmp_path / ".ruff.toml").exists()
 
 
@@ -495,30 +495,30 @@ class TestRunAll:
 class TestRemoveHooksCleanup:
     """Test remove_hooks cleanup behavior."""
 
-    def test_remove_hooks_removes_empty_claude_dir(self, tmp_path: Path) -> None:
-        """Verify .claude dir is removed when empty after hook removal."""
+    def test_remove_hooks_removes_empty_pi_dir(self, tmp_path: Path) -> None:
+        """Verify .pi dir is removed when empty after hook removal."""
         from benchmark.swebench.runner import remove_hooks
 
-        claude_dir = tmp_path / ".claude"
-        hooks_dir = claude_dir / "hooks"
+        pi_dir = tmp_path / ".plankton"
+        hooks_dir = pi_dir / "hooks"
         hooks_dir.mkdir(parents=True)
         (hooks_dir / "hook.sh").write_text("#!/bin/sh\n")
         remove_hooks(tmp_path)
-        assert not claude_dir.exists()
+        assert not pi_dir.exists()
 
-    def test_remove_hooks_preserves_nonempty_claude_dir(self, tmp_path: Path) -> None:
-        """Verify .claude dir is preserved when it contains other files."""
+    def test_remove_hooks_preserves_nonempty_pi_dir(self, tmp_path: Path) -> None:
+        """Verify .pi dir is preserved when it contains other files."""
         from benchmark.swebench.runner import remove_hooks
 
-        claude_dir = tmp_path / ".claude"
-        hooks_dir = claude_dir / "hooks"
+        pi_dir = tmp_path / ".plankton"
+        hooks_dir = pi_dir / "hooks"
         hooks_dir.mkdir(parents=True)
         (hooks_dir / "hook.sh").write_text("#!/bin/sh\n")
-        (claude_dir / "settings.json").write_text("{}")
+        (pi_dir / "settings.json").write_text("{}")
         remove_hooks(tmp_path)
         assert not hooks_dir.exists()
-        assert claude_dir.exists()
-        assert (claude_dir / "settings.json").exists()
+        assert pi_dir.exists()
+        assert (pi_dir / "settings.json").exists()
 
 
 # ── run_task solve_fn signature ──────────────────────────────────────
@@ -626,21 +626,21 @@ class TestErrorClassification:
         assert result["aborted"] is False
 
     def test_nonzero_returncode_sets_error_type_infra(self) -> None:
-        """_parse_claude_output sets error_type=infra on non-zero returncode."""
-        from benchmark.swebench.agent import _parse_claude_output
+        """_parse_pi_output sets error_type=infra on non-zero returncode."""
+        from benchmark.swebench.agent import _parse_pi_output
 
         result = subprocess.CompletedProcess(args=[], returncode=1, stdout="not json", stderr="crash")
-        metadata = _parse_claude_output(result, 5.0)
+        metadata = _parse_pi_output(result, 5.0)
         assert metadata.get("error_type") == "infra"
 
 
 # ── Slice A1: CLAUDE.md safety check ─────────────────────────────────
 
 
-class TestClaudeMdSafetyCheck:
+class TestPiMdSafetyCheck:
     """Test CLAUDE.md safety guard in run_all."""
 
-    def test_run_all_raises_when_claude_md_exists_without_bak(self, tmp_path: Path) -> None:
+    def test_run_all_raises_when_pi_md_exists_without_bak(self, tmp_path: Path) -> None:
         """run_all raises RuntimeError if CLAUDE.md exists without .bak."""
         from benchmark.swebench.runner import run_all
 
@@ -656,7 +656,7 @@ class TestClaudeMdSafetyCheck:
                 plankton_root=tmp_path,
             )
 
-    def test_run_all_raises_when_both_claude_md_and_bak_exist(self, tmp_path: Path) -> None:
+    def test_run_all_raises_when_both_pi_md_and_bak_exist(self, tmp_path: Path) -> None:
         """Should raise RuntimeError when both CLAUDE.md and .bak exist."""
         from benchmark.swebench.runner import run_all
 
@@ -673,7 +673,7 @@ class TestClaudeMdSafetyCheck:
                 plankton_root=tmp_path,
             )
 
-    def test_run_all_proceeds_when_claude_md_bak_exists(self, tmp_path: Path) -> None:
+    def test_run_all_proceeds_when_pi_md_bak_exists(self, tmp_path: Path) -> None:
         """run_all proceeds normally when only CLAUDE.md.bak exists."""
         from benchmark.swebench.runner import run_all
 
@@ -949,14 +949,14 @@ class TestRunAllReturnMetadata:
         result = run_all(
             tasks,
             seed=42,
-            model="claude-sonnet-4-20250514",
+            model="pi-sonnet-4-20250514",
             timeout=1800,
             results_dir=tmp_path / "r",
             patches_dir=tmp_path / "p",
             run_task_fn=mock_run_task,
         )
         assert result["seed"] == 42
-        assert result["model"] == "claude-sonnet-4-20250514"
+        assert result["model"] == "pi-sonnet-4-20250514"
         assert result["timeout"] == 1800
 
 

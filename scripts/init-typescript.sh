@@ -1,5 +1,5 @@
 #!/bin/bash
-# init-typescript.sh - Initialize TypeScript support for Claude Code hooks
+# init-typescript.sh - Initialize TypeScript support for Plankton Pi hooks
 #
 # Creates biome.json, tsconfig.json, package.json, .semgrep.yml and
 # enables TypeScript in config.json. Idempotent - safe to run multiple times.
@@ -9,7 +9,7 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
-config_file="${project_dir}/.claude/hooks/config.json"
+config_file="${project_dir}/.plankton/config.json"
 
 echo "Initializing TypeScript support..."
 echo ""
@@ -129,7 +129,7 @@ else
   cat >"${project_dir}/.semgrep.yml" <<'SEMGREP_EOF'
 rules:
   # 1. Code Injection: eval() / new Function()
-  - id: cc-hooks-no-eval
+  - id: plankton-no-eval
     patterns:
       - pattern-either:
           - pattern: eval($X)
@@ -143,7 +143,7 @@ rules:
       cwe: "CWE-94: Improper Control of Generation of Code"
 
   # 2. XSS: innerHTML / dangerouslySetInnerHTML
-  - id: cc-hooks-no-inner-html
+  - id: plankton-no-inner-html
     patterns:
       - pattern-either:
           - pattern: $EL.innerHTML = $X
@@ -157,7 +157,7 @@ rules:
       cwe: "CWE-79: Cross-site Scripting (XSS)"
 
   # 3. Hardcoded Secrets: API keys and tokens
-  - id: cc-hooks-no-hardcoded-secret
+  - id: plankton-no-hardcoded-secret
     patterns:
       - pattern: |
           $VAR = "..."
@@ -173,7 +173,7 @@ rules:
       cwe: "CWE-798: Use of Hard-coded Credentials"
 
   # 4. SQL Injection: string concatenation in queries
-  - id: cc-hooks-no-sql-concat
+  - id: plankton-no-sql-concat
     patterns:
       - pattern-either:
           - pattern: $DB.query(`...${$X}...`)
@@ -188,7 +188,7 @@ rules:
       cwe: "CWE-89: SQL Injection"
 
   # 5. Command Injection: child_process with user input
-  - id: cc-hooks-no-command-injection
+  - id: plankton-no-command-injection
     patterns:
       - pattern-either:
           - pattern: exec($CMD)
@@ -204,7 +204,7 @@ rules:
       cwe: "CWE-78: OS Command Injection"
 
   # 6. Path Traversal: unsanitized file paths
-  - id: cc-hooks-no-path-traversal
+  - id: plankton-no-path-traversal
     patterns:
       - pattern-either:
           - pattern: fs.readFile($PATH, ...)
@@ -224,7 +224,7 @@ rules:
       cwe: "CWE-22: Path Traversal"
 
   # 7. JWT Misuse: hardcoded secrets
-  - id: cc-hooks-no-jwt-hardcoded-secret
+  - id: plankton-no-jwt-hardcoded-secret
     patterns:
       - pattern-either:
           - pattern: jwt.sign($DATA, "...", ...)

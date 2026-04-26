@@ -1,277 +1,117 @@
-# plankton
+# Plankton
 
-![Plankton mascot](assets/plankton-cover.png)
+Plankton is a Pi-exclusive code-quality extension. It runs project-local bash
+hooks through a safe TypeScript extension, blocks protected linter config edits,
+enforces package-manager choices, and reports lint feedback after file writes.
 
-Write-time code quality enforcement for AI coding agents, built on Claude Code hooks.
+## What is included
 
-> [!CAUTION]
-> Research project under active development. Hooks are tested against
-> Claude Code >= 2.1.50 (see badge). Newer CC versions usually work
-> but are not guaranteed. **Disable CC auto-updates** to prevent
-> silent breakage (see Quick Start). If you encounter issues, file a
-> report including the output of `claude --version`. To pin to a
-> specific Plankton version: `git checkout v0.1.0`.
+- Project extension: `.pi/extensions/plankton/`
+- Runtime hooks: `.plankton/hooks/`
+- Hook tests and fixtures: `.plankton/test/`
+- Configuration: `.plankton/config.json`
+- Optional subprocess isolation settings: `.plankton/subprocess-settings.json`
 
-## quick start
+Pi is the only supported agent target. Other agent adapters have been removed.
 
-```bash
-git clone https://github.com/alexfazio/plankton.git
-cd plankton
-python3 scripts/setup.py  # interactive setup wizard (recommended)
-claude                   # hooks activate automatically
-```
-
-That's it. Plankton works by being the directory you run Claude Code from.
-The hooks in `.claude/hooks/` are picked up automatically — no install
-command, no plugin, no config. Clone, setup, claude.
-
-If you prefer non-interactive setup, use:
+## Quick start
 
 ```bash
-bash scripts/setup.sh   # non-interactive installer (macOS + Linux)
+bash scripts/setup.sh
+pi
 ```
 
-> [!NOTE]
-> **Windows** is not supported. Use
-> [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) and
-> follow the Linux instructions inside the WSL environment.
-
-<!-- -->
-
-> [!TIP]
-> You can work on any codebase from inside plankton. Just tell Claude:
-> *"work on /path/to/my-project"* — it will apply the same quality
-> enforcement to that codebase while the hooks stay active.
-
-<!-- -->
-
-> [!NOTE]
-> **Existing codebases:** when the agent edits a file, Plankton runs the
-> configured checks for that file, including pre-existing issues. Some issues
-> are auto-fixed on first touch; unresolved ones come back as feedback. Scope
-> down only the Python security scanners here if needed:
->
-> ```json
-> "security_linter_exclusions": [".venv/", "vendor/", "node_modules/"]
-> ```
-
-**Recommended: disable Claude Code auto-updates.** Plankton depends on
-undocumented CC internals — a silent auto-update can break hooks without
-warning.
+For another project:
 
 ```bash
-# Option A: disable auto-updates entirely (most reliable)
-echo 'export DISABLE_AUTOUPDATER=1' >> ~/.zshrc && source ~/.zshrc
-
-# Option B: use the stable channel (~1 week behind latest, fewer regressions)
-curl -fsSL https://claude.ai/install.sh | bash -s stable
+bash /path/to/plankton-for-all/scripts/install-plankton.sh /path/to/project
+cd /path/to/project
+pi
 ```
 
-`scripts/setup.sh` installs all tools automatically. On macOS it uses
-Homebrew; on Linux it downloads prebuilt binaries (no cargo or go
-required). See [docs/SETUP.md](docs/SETUP.md) for manual per-language
-setup.
+## Pi extension behavior
 
-<!-- markdownlint-disable MD033 -->
-<details>
-<summary>Manual install (if you prefer not to use the setup script)</summary>
+The extension discovers `.plankton/config.json` by walking upward from Pi's
+current working directory. If no config is found, it stays in no-op mode.
 
-**macOS:**
+During Pi tool execution:
+
+- `write` / `edit` preflight runs `protect_linter_configs.sh`.
+- `bash` preflight runs `enforce_package_managers.sh`.
+- Successful `write` / `edit` results run `multi_linter.sh`.
+- Hook processes run in their own POSIX process group and are terminated as a
+  group on timeout or abort.
+- Project hooks are preferred; bundled hooks in the extension are the fallback.
+
+## Commands
+
+Use these Pi slash commands:
+
+```text
+/plankton-status          Show config, hook paths, package managers, stats
+/plankton-lint <file>     Run linting manually for one file
+/plankton-toggle <lang>   Toggle a language in .plankton/config.json
+```
+
+## Tools
+
+The extension registers two LLM-callable tools:
+
+- `plankton_lint({ path })` returns a compact summary and `systemMessage`.
+- `plankton_config({ action, key, value })` safely reads or updates whitelisted
+  configuration keys.
+
+## Configuration
+
+`.plankton/config.json` controls language toggles, protected files, subprocess
+settings, duplication thresholds, and package-manager enforcement.
+
+Important defaults:
+
+```json
+{
+  "tested_version": "2.1.50",
+  "subprocess": {
+    "settings_file": ".plankton/subprocess-settings.json",
+    "delegate_cmd": "pi"
+  },
+  "package_managers": {
+    "python": "uv",
+    "javascript": "bun"
+  }
+}
+```
+
+Legacy delegate values are coerced at read time: `auto` and removed agent names
+become `pi`; unknown values become `none`.
+
+## Verification
 
 ```bash
-brew install jaq ruff uv shellcheck shfmt hadolint taplo
-brew install oven-sh/bun/bun
-bun install                              # biome, oxlint
-uv sync --all-extras --no-install-project  # Python linting tools
+bunx tsc --project tsconfig.extensions.json
+bash .plankton/test/test_hook.sh --self-test
+uv run pytest
 ```
 
-**Linux:**
+Useful direct hook checks:
 
 ```bash
-# Core tools (ruff + uv via Astral installers)
-curl -LsSf https://astral.sh/ruff/install.sh | sh
-curl -LsSf https://astral.sh/uv/install.sh | sh
+printf '%s' '{"tool_input":{"file_path":".ruff.toml"}}' \
+  | PLANKTON_PROJECT_DIR="$PWD" bash .plankton/hooks/protect_linter_configs.sh
 
-# Binary tools — see docs/SETUP.md for download URLs
-# jaq, shellcheck, shfmt, hadolint, taplo
-
-# JS runtime + tools
-curl -fsSL https://bun.sh/install | bash
-bun install                              # biome, oxlint
-
-# Python linting tools
-uv sync --all-extras --no-install-project
+printf '%s' '{"tool_input":{"command":"pip install requests"}}' \
+  | PLANKTON_PROJECT_DIR="$PWD" bash .plankton/hooks/enforce_package_managers.sh
 ```
 
-See [docs/SETUP.md](docs/SETUP.md) for per-language details and download
-URLs.
-</details>
-<!-- markdownlint-enable MD033 -->
+## Global install
 
-## what is plankton
-
-Code quality gate enforcement at write-time, using Claude Code hooks. The
-agent is blocked from proceeding until its output passes your checks —
-style, types, security, complexity — all enforced before commits and code
-review.
-
-1. **Run the Interactive Setup Wizard**:
-
-   ```bash
-   python3 scripts/setup.py
-   ```
-
-   It auto-detects project languages, checks dependencies, and can
-   guide/install missing required tools (`jaq`, `ruff`, `uv`)
-   step-by-step.
-
-   If `uv` is already installed, this also works:
-
-   ```bash
-   uv run --no-project scripts/setup.py
-   ```
-
-   Non-interactive alternative:
-
-   ```bash
-   bash scripts/setup.sh
-   ```
-
-2. **Start a Claude Code session**. Hooks activate automatically.
-
-- **Higher pass rate** — write-time feedback catches bugs, type errors,
-  and anti-patterns that would otherwise cause test failures.
-- **Behavioral shift** — with Plankton active, the model learns from
-  write-time feedback and produces better code *during* generation,
-  not just through post-hoc formatting.
-- **Compound quality** — improvements across multiple dimensions
-  compound into code that is more likely to be functionally correct.
-
-For the full motivation and design story, read the
-[original writeup](https://x.com/alxfazio/status/2024931367612743688).
-
-## verify
+Copy the extension directory into Pi's global extension directory:
 
 ```bash
-# Install pre-commit hooks (recommended). This makes the strict
-# runtime-parity gate run automatically on git commit and enables the
-# commit-message policy hook.
-uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
-
-# Install the pre-push hook. Use -f to replace any existing local
-# pre-push hook instead of chaining legacy all-files runners.
-uv run pre-commit install --hook-type pre-push -f
-
-# Repo-wide baseline sweep (skip the staged-file strict runtime hook;
-# it is designed for real commits and targeted reruns, not --all-files)
-SKIP=plankton-strict-runtime-commit uv run pre-commit run --all-files
-
-# Run the non-benchmark Plankton hook test suite directly
-./scripts/pre_push_plankton_hooks.sh
-
-# Manually re-run the same strict gate on currently staged files
-make strict
-
-# For intentional protected config edits, use the protected override for
-# the manual check:
-make strict-protected FILES=".semgrep.yml"
-
-# ...or for an actual commit:
-PLANKTON_STRICT_ALLOW_PROTECTED=1 git commit
-
-# Run the hook self-test suite
-.claude/hooks/test_hook.sh --self-test
+mkdir -p ~/.pi/agent/extensions
+cp -a .pi/extensions/plankton ~/.pi/agent/extensions/plankton
+pi
 ```
 
-## how it works
-
-Three phases run on every file edit: auto-format first (ruff, shfmt, biome,
-taplo, markdownlint), then collect remaining violations as structured JSON from
-20+ linters, then delegate what's left to dedicated Claude subprocesses that
-reason about each fix. Config files are tamper-proof — a PreToolUse hook blocks
-linter config edits before they happen. Model routing right-sizes intelligence
-to problem complexity so tokens aren't wasted on easy fixes.
-
-See [docs/REFERENCE.md](docs/REFERENCE.md) for the full architecture, message
-flows, and configuration reference. For the motivation and design story, read
-the [original writeup](https://x.com/alxfazio/status/2024931367612743688).
-
-## what it enforces
-
-Style enforcement covers formatting, import ordering, naming
-conventions, docstring format, quote style, indentation, trailing
-commas, modern syntax idioms (Python 3.11+ f-strings, modern type
-annotations). Most of this is handled silently by auto-formatting in
-Phase 1. You never see these violations because they're fixed before
-they're reported.
-
-Correctness checks catch unused variables, type errors (ty), dead
-code (vulture, Knip), security vulnerabilities (bandit, Semgrep),
-async anti-patterns (flake8-async), Pydantic model validation,
-duplicate code detection (jscpd), ShellCheck semantic analysis with
-all optional checks enabled, Dockerfile best practices (hadolint at
-maximum strictness), YAML strictness with all 23 yamllint rules
-configured. Phase 2 linters catch these; Phase 3 Claude instances
-fix them.
-
-Architectural constraints are emerging: complexity limits (cyclomatic
-complexity, max arguments, max nesting depth, max statements per
-function), package manager compliance (blocks pip/npm/yarn, enforces
-uv/bun), config file protection with tamper-proof defense. These
-shape how code is organized rather than how it looks.
-
-## configuration
-
-`.claude/hooks/config.json` controls everything: language toggles, phase
-control, model routing patterns, protected files, security-linter exclusions, jscpd
-thresholds, package manager enforcement modes. If the file is missing, all
-features are enabled with sensible defaults. Environment variables
-(`HOOK_SKIP_SUBPROCESS=1`, `HOOK_SUBPROCESS_TIMEOUT`) override config values
-for quick session-level tweaks. Every rule is customizable. Configure what
-gets enforced, how strictly, and for which languages. Full configuration
-reference in [docs/REFERENCE.md](docs/REFERENCE.md).
-
-## faq
-
-See [docs/FAQ.md](docs/FAQ.md) for answers to common questions: how this
-differs from pre-commit hooks, whether models will make this unnecessary, why
-agents modify linting rules, and more.
-
-## todos
-
-- [x] should have an install wizard instead of manual setup, a guided script that
-  detects your stack and configures everything
-- one-click install via Claude Code marketplace would be nice
-- a Claude Code skill for configuration and troubleshooting from inside a
-  session
-- Swift and Go are next
-- model routing currently assumes Anthropic models, need to support any model
-  Claude Code supports (Qwen, DeepSeek, Gemini, etc.) with a generic
-  three-tier system users map to their provider
-- per-directory rule overrides, team config profiles
-- extend beyond code to catch AI writing slop in docs and READMEs
-  ([slop-guard](https://github.com/eric-tramel/slop-guard) integration)
-- `multi_linter.sh` is ~1,300 lines and should split into one file per hook type
-- 103-test integration suite exists but needs work; Claude subprocess
-  stochasticity makes deterministic assertions hard
-- measuring LLM+Plankton vs LLM-alone would be useful but needs benchmarking
-  expertise, contributions welcome here
-
-Contributions are welcome.
-
-## star history
-
-<!-- markdownlint-disable MD033 MD013 -->
-<a href="https://star-history.com/#alexfazio/plankton&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=alexfazio/plankton&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=alexfazio/plankton&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=alexfazio/plankton&type=Date" />
- </picture>
-</a>
-<!-- markdownlint-enable MD013 -->
-<!-- markdownlint-enable MD033 -->
-
-## license
-
-MIT
+The bundled hooks allow the global extension to operate in projects that have a
+`.plankton/config.json` but no project-local `.plankton/hooks/` directory.

@@ -5,14 +5,14 @@
 # Design choices:
 # - Uses protect_linter_configs.sh to block protected config edits.
 # - Uses multi_linter.sh with HOOK_SKIP_SUBPROCESS=1 to keep commit-time checks
-#   deterministic and avoid invoking Claude subprocess delegation.
+#   deterministic and avoid invoking Pi subprocess delegation.
 # - Fails if deterministic fixes modify a file so the user can review/re-stage.
 
 set -euo pipefail
 
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-protect_hook="${repo_root}/.claude/hooks/protect_linter_configs.sh"
-lint_hook="${repo_root}/.claude/hooks/multi_linter.sh"
+protect_hook="${repo_root}/.plankton/hooks/protect_linter_configs.sh"
+lint_hook="${repo_root}/.plankton/hooks/multi_linter.sh"
 
 if ! command -v jaq >/dev/null 2>&1; then
   echo "plankton: strict pre-commit requires 'jaq' in PATH" >&2
@@ -20,7 +20,7 @@ if ! command -v jaq >/dev/null 2>&1; then
 fi
 
 if [[ ! -f "${protect_hook}" ]] || [[ ! -f "${lint_hook}" ]]; then
-  echo "plankton: expected hook scripts under .claude/hooks/" >&2
+  echo "plankton: expected hook scripts under .plankton/hooks/" >&2
   exit 1
 fi
 
@@ -76,7 +76,7 @@ for rel_path in "$@"; do
   payload=$(make_payload "${abs_path}")
 
   if [[ "${PLANKTON_STRICT_ALLOW_PROTECTED:-}" != "1" ]]; then
-    protect_json=$(printf '%s\n' "${payload}" | CLAUDE_PROJECT_DIR="${repo_root}" bash "${protect_hook}")
+    protect_json=$(printf '%s\n' "${payload}" | PLANKTON_PROJECT_DIR="${repo_root}" bash "${protect_hook}")
     decision=$(printf '%s' "${protect_json}" | jaq -r '.decision // empty' 2>/dev/null || echo "")
     if [[ "${decision}" == "block" ]]; then
       reason=$(printf '%s' "${protect_json}" | jaq -r '.reason // "Protected file change blocked."' 2>/dev/null || echo "Protected file change blocked.")
@@ -98,7 +98,7 @@ for rel_path in "$@"; do
   stderr_file=$(mktemp)
 
   set +e
-  CLAUDE_PROJECT_DIR="${repo_root}" \
+  PLANKTON_PROJECT_DIR="${repo_root}" \
     HOOK_SKIP_SUBPROCESS=1 \
     bash "${lint_hook}" <<<"${payload}" >"${stdout_file}" 2>"${stderr_file}"
   hook_status=$?

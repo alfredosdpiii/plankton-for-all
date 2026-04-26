@@ -34,17 +34,17 @@ def reset_repo(repo_dir: Path) -> None:
     subprocess.run([GIT, "clean", "-fd"], cwd=repo_dir, capture_output=True, check=True)  # noqa: S603  # nosec B603
 
 
-_INJECT_FILES = [".ruff.toml", "ty.toml", ".claude/subprocess-settings.json"]
+_INJECT_FILES = [".ruff.toml", "ty.toml", ".plankton/subprocess-settings.json"]
 
 
 def inject_hooks(task_dir: Path, plankton_root: Path = PLANKTON_ROOT) -> None:
     """Copy Plankton hooks + linter configs into task repo."""
-    src_hooks = plankton_root / ".claude" / "hooks"
+    src_hooks = plankton_root / ".plankton" / "hooks"
     if not src_hooks.is_dir():
         detail = "exists but is not a directory" if src_hooks.exists() else "not found"
         msg = f"Hooks source directory {detail}: {src_hooks}"
         raise FileNotFoundError(msg)
-    dst_hooks = task_dir / ".claude" / "hooks"
+    dst_hooks = task_dir / ".plankton" / "hooks"
     dst_hooks.mkdir(parents=True, exist_ok=True)
     shutil.copytree(src_hooks, dst_hooks, dirs_exist_ok=True)
     for fname in _INJECT_FILES:
@@ -57,17 +57,17 @@ def inject_hooks(task_dir: Path, plankton_root: Path = PLANKTON_ROOT) -> None:
 
 def remove_hooks(task_dir: Path) -> None:
     """Remove injected hooks and configs from task repo."""
-    hooks_dir = task_dir / ".claude" / "hooks"
+    hooks_dir = task_dir / ".plankton" / "hooks"
     if hooks_dir.exists():
         shutil.rmtree(hooks_dir)
     for fname in _INJECT_FILES:
         p = task_dir / fname
         if p.exists():
             p.unlink()
-    # Clean up empty .claude/ directory
-    claude_dir = task_dir / ".claude"
-    if claude_dir.exists() and claude_dir.is_dir() and not any(claude_dir.iterdir()):
-        claude_dir.rmdir()
+    # Clean up empty .plankton/ directory
+    plankton_dir = task_dir / ".plankton"
+    if plankton_dir.exists() and plankton_dir.is_dir() and not any(plankton_dir.iterdir()):
+        plankton_dir.rmdir()
 
 
 def append_result(  # noqa: PLR0913

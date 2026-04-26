@@ -19,7 +19,7 @@ errors, copy-paste them to the agent, the agent fixes them, you commit
 again, more errors appear, creating an infinite loop that burns context and
 wastes turns. Plankton enforces quality *at write-time*: the moment the
 agent writes a file, violations are caught and fixed by dedicated
-Claude instances before
+Pi instances before
 the agent even continues. The loop never reaches the commit
 stage. Think of it as the live linting that IDEs provided before agentic
 coding. Errors corrected in real-time so you never wait for the commit.
@@ -29,7 +29,7 @@ coding. Errors corrected in real-time so you never wait for the commit.
 Running a linter gives you a list of errors. Plankton is a three-phase
 enforcement system: it auto-formats first (fixing 40-50% of issues
 silently), collects remaining violations as structured data, then
-passes remaining violations to Claude instances that analyze each
+passes remaining violations to Pi instances that analyze each
 violation and generate precise fixes. It routes violations to different
 model tiers based on complexity: fast, lightweight models for simple
 formatting and capable models for architectural refactoring, right-sizing
@@ -56,18 +56,18 @@ LLM-ready codebases and complexity enforcement remain vague. Plankton
 is a concrete, working implementation of the protection system that
 agentic coding actually needs.
 
-## Why not just use Claude Code's LSP plugins?
+## Why not just use Pi's LSP plugins?
 
-Claude Code's LSP plugins (Pyright, typescript-language-server, etc.)
+Pi's LSP plugins (Pyright, typescript-language-server, etc.)
 give the agent awareness of type errors and syntax issues after every
 edit. This is valuable, but it's fundamentally different from what
 Plankton does.
 
-LSP diagnostics are **advisory**: Claude sees the errors and *decides*
+LSP diagnostics are **advisory**: Pi sees the errors and *decides*
 whether to fix them. It can judge a diagnostic as irrelevant and move
 on. Plankton hooks are **structural**: they run outside the model's
 decision loop, catch violations deterministically, and delegate fixes
-to dedicated Claude instances before the agent continues. The model cannot bypass
+to dedicated Pi instances before the agent continues. The model cannot bypass
 them.
 
 LSP also covers only what language servers report: type errors,
@@ -81,25 +81,25 @@ The two systems are complementary. LSP provides real-time type
 awareness during editing. Plankton provides deterministic, multi-linter
 enforcement that cannot be bypassed. Use both.
 
-## Why Claude Code?
+## Why Pi?
 
-Claude Code is the only LLM coding tool with hooks this extended,
+Pi is the only LLM coding tool with hooks this extended,
 granular, and customizable. Its hook system exposes three event types:
 PreToolUse (before an action), PostToolUse (after an action),
 Stop (at session end), all at the individual tool-call level. This means
 Plankton can intercept every single file write, run linters, delegate
-fixes to Claude instances, and verify results before the agent
+fixes to Pi instances, and verify results before the agent
 proceeds. No other agentic coding tool exposes event-level hooks with
 this depth: tool-specific matchers, JSON input/output schemas, exit
 code semantics, and the ability to block, allow, or modify operations
-programmatically. Plankton exists because Claude Code's hook
+programmatically. Plankton exists because Pi's hook
 architecture makes it possible.
 
 ## Does this slow down the agent?
 
 The system is built for speed. All linters are Rust-based (Ruff, Biome,
 ShellCheck via compiled binaries) to stay within tight latency budgets.
-Auto-formatting runs in under 100ms for most files. The Claude fix
+Auto-formatting runs in under 100ms for most files. The Pi fix
 instance is synchronous (the main agent waits), but the trade-off is
 deliberate: 25 seconds of intelligent fixing saves minutes of manual
 error correction,
@@ -130,7 +130,7 @@ enough to encode whatever your team considers important.
 
 ## Don't the fix instances trigger more hooks?
 
-No. The dedicated Claude instances run with all hooks disabled. They
+No. The dedicated Pi instances run with all hooks disabled. They
 edit the file, but no linting hooks fire during their edits. This
 eliminates recursion entirely. After the fix instance exits, the parent
 hook re-runs all linters to verify the result, so no violations are
@@ -140,7 +140,7 @@ the same file.
 
 ## What happens when fix instances can't resolve a violation?
 
-Most of the time, nothing visible happens. The dedicated Claude
+Most of the time, nothing visible happens. The dedicated Pi
 instances fix all violations silently, and the main agent continues
 without knowing the process occurred. When violations remain (which
 is rare), the system escalates: the hook communicates structured

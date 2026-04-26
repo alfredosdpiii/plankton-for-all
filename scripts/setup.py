@@ -8,7 +8,7 @@
 """Interactive setup wizard for Plankton.
 
 Detects project languages, checks dependencies, and generates
-the `.plankton/config.json` configuration file (with legacy fallback).
+the `.plankton/config.json` configuration file.
 """
 
 import json
@@ -202,8 +202,7 @@ console = Console()
 app = typer.Typer()
 
 CONFIG_PATH = Path(".plankton/config.json")
-LEGACY_CONFIG_PATH = Path(".claude/hooks/config.json")
-HOOKS_DIR = Path(".claude/hooks")
+HOOKS_DIR = Path(".plankton/hooks")
 
 REQUIRED_TOOLS = {
     "jaq": "Essential for JSON parsing in hooks. Install via brew/apt/pacman.",
@@ -219,11 +218,18 @@ OPTIONAL_TOOLS = {
     "taplo": "TOML formatting/linting",
     "markdownlint-cli2": "Markdown linting",
     "biome": "JavaScript/TypeScript linting & formatting",
+    "mix": "Elixir/Phoenix formatting and Credo task runner",
+    "sobelow": "Phoenix security scanner (mix sobelow)",
 }
 
 DEFAULT_CONFIG = {
     "languages": {
         "python": True,
+        "elixir": {
+            "enabled": True,
+            "sobelow": True,
+            "mix_compile_warnings": False,
+        },
         "shell": True,
         "yaml": True,
         "json": True,
@@ -256,12 +262,16 @@ DEFAULT_CONFIG = {
         ".oxlintrc.json",
         ".semgrep.yml",
         "knip.json",
+        ".formatter.exs",
+        ".credo.exs",
+        ".sobelow-conf",
+        ".sobelow-skips",
     ],
     "security_linter_exclusions": [".venv/", "node_modules/", ".git/"],
     "phases": {"auto_format": True, "subprocess_delegation": True},
     "subprocess": {
-        "settings_file": ".claude/subprocess-settings.json",
-        "delegate_cmd": "auto",
+        "settings_file": ".plankton/subprocess-settings.json",
+        "delegate_cmd": "pi",
     },
     "jscpd": {"session_threshold": 3, "scan_dirs": ["src/", "lib/"], "advisory_only": True},
     "package_managers": {
@@ -278,7 +288,7 @@ DEFAULT_CONFIG = {
     },
 }
 
-SCAN_EXCLUDE_DIRS = {".git", ".venv", "node_modules", ".claude", ".plankton", "__pycache__"}
+SCAN_EXCLUDE_DIRS = {".git", ".venv", "node_modules", ".plankton", "__pycache__"}
 LOCAL_BIN_DIR = Path.home() / ".local" / "bin"
 JAQ_LINUX_COMMANDS = {
     "apt-get": ["apt-get", "install", "-y", "jaq"],
@@ -295,71 +305,9 @@ def _is_excluded_path(path: Path) -> bool:
     return any(part in SCAN_EXCLUDE_DIRS for part in path.parts)
 
 
-def detect_agents() -> dict[str, bool]:
-    """Detect which coding agent CLIs are available on PATH."""
-    return {
-        "claude": shutil.which("claude") is not None,
-        "pi": shutil.which("pi") is not None,
-        "opencode": shutil.which("opencode") is not None,
-    }
-
-
-PI_ADAPTER_PATH = Path(".pi/extensions/plankton.ts")
-OPENCODE_ADAPTER_PATH = Path(".opencode/plugins/plankton.ts")
-OPENCODE_CONFIG_PATH = Path("opencode.json")
-
-
 def _migrate_legacy_config() -> bool:
-    """Copy .claude/hooks/config.json to .plankton/config.json if needed.
-
-    Returns True if migration happened.
-    """
-    if CONFIG_PATH.exists():
-        return False
-    if not LEGACY_CONFIG_PATH.exists():
-        return False
-
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(LEGACY_CONFIG_PATH, CONFIG_PATH)
-    console.print(f"  [green]\u2713[/green] Migrated config from {LEGACY_CONFIG_PATH} to {CONFIG_PATH}")
-    return True
-
-
-def setup_pi_adapter(project_root: Path) -> None:
-    """Write the Pi extension adapter if not already present."""
-    adapter = project_root / PI_ADAPTER_PATH
-    if adapter.exists():
-        console.print(f"  [dim]Pi adapter already exists at {PI_ADAPTER_PATH}[/dim]")
-        return
-    adapter.parent.mkdir(parents=True, exist_ok=True)
-    # Read the shipped adapter template
-    shipped = project_root / ".pi" / "extensions" / "plankton.ts"
-    if shipped.exists():
-        console.print(f"  [green]\u2713[/green] Pi adapter present at {PI_ADAPTER_PATH}")
-    else:
-        console.print(f"  [yellow]![/yellow] Pi adapter not found at {PI_ADAPTER_PATH}; create it manually.")
-
-
-def setup_opencode_adapter(project_root: Path) -> None:
-    """Write the OpenCode plugin adapter if not already present."""
-    adapter = project_root / OPENCODE_ADAPTER_PATH
-    if adapter.exists():
-        console.print(f"  [dim]OpenCode adapter already exists at {OPENCODE_ADAPTER_PATH}[/dim]")
-        return
-    adapter.parent.mkdir(parents=True, exist_ok=True)
-    shipped = project_root / ".opencode" / "plugins" / "plankton.ts"
-    if shipped.exists():
-        console.print(f"  [green]\u2713[/green] OpenCode adapter present at {OPENCODE_ADAPTER_PATH}")
-    else:
-        console.print(
-            f"  [yellow]![/yellow] OpenCode adapter not found at {OPENCODE_ADAPTER_PATH}; create it manually."
-        )
-
-    # Ensure opencode.json references the plugin
-    oc_config = project_root / OPENCODE_CONFIG_PATH
-    if not oc_config.exists():
-        oc_config.write_text(json.dumps({"plugin": [str(OPENCODE_ADAPTER_PATH)]}, indent=2) + "\n")
-        console.print(f"  [green]\u2713[/green] Created {OPENCODE_CONFIG_PATH}")
+    """Legacy migration is no longer automatic in Pi-only Plankton."""
+    return False
 
 
 def _has_any(pattern: str) -> bool:
@@ -370,19 +318,17 @@ def _has_any(pattern: str) -> bool:
 def load_existing_config() -> dict[str, Any]:
     """Load existing config file if present and valid, else return empty dict.
 
-    Checks CONFIG_PATH (.plankton/config.json) first, falls back to
-    LEGACY_CONFIG_PATH (.claude/hooks/config.json).
+    Checks CONFIG_PATH (.plankton/config.json).
     """
-    for candidate in (CONFIG_PATH, LEGACY_CONFIG_PATH):
-        if not candidate.exists():
-            continue
-        try:
-            with open(candidate, encoding="utf-8") as file_handle:
-                existing_config = json.load(file_handle)
-        except Exception:  # noqa: S112  # intentional: try next candidate on parse failure
-            continue
-        if isinstance(existing_config, dict):
-            return existing_config
+    if not CONFIG_PATH.exists():
+        return {}
+    try:
+        with open(CONFIG_PATH, encoding="utf-8") as file_handle:
+            existing_config = json.load(file_handle)
+    except Exception:  # noqa: S112  # invalid config falls back to defaults
+        return {}
+    if isinstance(existing_config, dict):
+        return existing_config
     return {}
 
 
@@ -851,6 +797,25 @@ def detect_languages() -> dict[str, bool]:  # noqa: PLR0912
     else:
         detected["typescript"] = False
 
+    # Elixir / Phoenix
+    elixir_patterns = ("*.ex", "*.exs", "*.heex", "*.leex", "*.eex")
+    is_phoenix = False
+    if Path("mix.exs").exists() or any(_has_any(pattern) for pattern in elixir_patterns):
+        # Check if this is specifically a Phoenix project
+        if Path("mix.exs").exists():
+            try:
+                mix_content = Path("mix.exs").read_text()
+                is_phoenix = ":phoenix" in mix_content or ":phoenix_html" in mix_content
+            except OSError:
+                pass
+        if is_phoenix:
+            console.print("  [green]✓[/green] Phoenix project detected (mix.exs with :phoenix dep)")
+        else:
+            console.print("  [green]✓[/green] Elixir detected (mix.exs or .ex/.heex files)")
+        detected["elixir"] = True
+    else:
+        detected["elixir"] = False
+
     # Shell
     if _has_any("*.sh"):
         console.print("  [green]✓[/green] Shell scripts detected (*.sh)")
@@ -909,6 +874,12 @@ def language_defaults_from_effective(detected: dict[str, bool], effective_config
         if isinstance(existing_value, bool):
             defaults[language] = existing_value
 
+    existing_elixir = languages.get("elixir")
+    if isinstance(existing_elixir, bool):
+        defaults["elixir"] = existing_elixir
+    elif isinstance(existing_elixir, dict):
+        defaults["elixir"] = bool(existing_elixir.get("enabled", True))
+
     existing_typescript = languages.get("typescript")
     if isinstance(existing_typescript, bool):
         defaults["typescript"] = existing_typescript
@@ -918,46 +889,41 @@ def language_defaults_from_effective(detected: dict[str, bool], effective_config
     return defaults
 
 
-def configure_languages(defaults: dict[str, bool]) -> dict[str, Any]:  # noqa: PLR0912
+def configure_languages(defaults: dict[str, bool]) -> dict[str, Any]:
     """Interactive wizard to enable/disable languages."""
     console.print("\n[bold blue]Configuration Wizard[/bold blue]")
     languages = cast("dict[str, Any]", deepcopy(DEFAULT_CONFIG["languages"]))
 
-    # Python
-    if Confirm.ask("Enable Python enforcement?", default=defaults.get("python", True)):
-        languages["python"] = True
-    else:
-        languages["python"] = False
-
-    # TypeScript
-    if Confirm.ask("Enable TypeScript/JavaScript enforcement?", default=defaults.get("typescript", True)):
-        # If enabling, use the default complex object
-        # If currently boolean in default config, swap to object
-        pass  # Keep default object
-    else:
-        languages["typescript"] = False  # Set to false
-
-    # Shell
-    if Confirm.ask("Enable Shell Script enforcement?", default=defaults.get("shell", True)):
-        languages["shell"] = True
-    else:
-        languages["shell"] = False
-
-    # Docker
-    if Confirm.ask("Enable Dockerfile enforcement?", default=defaults.get("dockerfile", True)):
-        languages["dockerfile"] = True
-    else:
-        languages["dockerfile"] = False
-
-    # Format-specific prompts (granular per language)
-    format_prompts = [
+    language_prompts = [
+        ("python", "Enable Python enforcement?"),
+        ("shell", "Enable Shell Script enforcement?"),
+        ("dockerfile", "Enable Dockerfile enforcement?"),
         ("yaml", "Enable YAML enforcement?"),
         ("json", "Enable JSON enforcement?"),
         ("toml", "Enable TOML enforcement?"),
         ("markdown", "Enable Markdown enforcement?"),
     ]
-    for language, prompt in format_prompts:
+
+    for language, prompt in language_prompts:
         languages[language] = bool(Confirm.ask(prompt, default=defaults.get(language, True)))
+
+    # Elixir/Phoenix: structured config like TypeScript
+    if Confirm.ask("Enable Elixir/Phoenix enforcement?", default=defaults.get("elixir", True)):
+        elixir_config: dict[str, Any] = {"enabled": True}
+        elixir_config["sobelow"] = bool(
+            Confirm.ask("  Enable Sobelow security scanner?", default=True)
+        )
+        elixir_config["mix_compile_warnings"] = bool(
+            Confirm.ask("  Enable mix compile warnings-as-errors?", default=False)
+        )
+        languages["elixir"] = elixir_config
+    else:
+        languages["elixir"] = False
+
+    if Confirm.ask("Enable TypeScript/JavaScript enforcement?", default=defaults.get("typescript", True)):
+        pass
+    else:
+        languages["typescript"] = False
 
     return {"languages": languages}
 
@@ -1067,8 +1033,11 @@ def configure_subprocess(effective_config: dict[str, Any]) -> dict[str, Any]:
     if not settings_file:
         settings_file = default_settings
 
-    default_delegate = str(subprocess_cfg.get("delegate_cmd", default_subprocess.get("delegate_cmd", "auto")))
-    delegate_cmd = _ask_text("Agent CLI for delegation (auto/claude/pi/opencode/none)", default_delegate).strip()
+    default_delegate = str(subprocess_cfg.get("delegate_cmd", default_subprocess.get("delegate_cmd", "pi")))
+    delegate_cmd = _ask_text("Pi delegation command (pi/none)", default_delegate).strip()
+    if delegate_cmd not in {"pi", "none"}:
+        console.print("  [yellow]![/yellow] Unsupported delegate command; using pi.")
+        delegate_cmd = "pi"
     if not delegate_cmd:
         delegate_cmd = default_delegate
 
@@ -1131,27 +1100,13 @@ def _ensure_pre_commit_ready() -> None:
     _install_pre_commit_hooks()
 
 
-def _detect_and_setup_agents() -> None:
-    console.print("\n[bold blue]Detecting Agent CLIs...[/bold blue]")
-    agents = detect_agents()
-    for agent_name, found in agents.items():
-        if found:
-            console.print(f"  [green]\u2713[/green] {agent_name} found")
-        else:
-            console.print(f"  [dim]\u2022[/dim] {agent_name} not found")
-    if agents["pi"]:
-        setup_pi_adapter(Path("."))
-    if agents["opencode"]:
-        setup_opencode_adapter(Path("."))
-
-
 def setup_hooks():
     """Ensure hooks directory exists and scripts are executable."""
     console.print("\n[bold blue]Setting up Hooks...[/bold blue]")
 
     if not HOOKS_DIR.exists():
         console.print(f"  [yellow]![/yellow] Hooks directory {HOOKS_DIR} not found. Are you in the project root?")
-        if Confirm.ask("Create .claude/hooks directory?"):
+        if Confirm.ask("Create .plankton/hooks directory?"):
             HOOKS_DIR.mkdir(parents=True, exist_ok=True)
         else:
             return
@@ -1208,11 +1163,10 @@ def main():
 
     setup_hooks()
 
-    _detect_and_setup_agents()
 
     console.print("\n[bold green]Setup Complete![/bold green]")
-    console.print("Run a coding agent session to start using Plankton.")
-    console.print("To test hooks manually: [cyan].claude/hooks/test_hook.sh --self-test[/cyan]")
+    console.print("Run Pi to start using Plankton.")
+    console.print("To test hooks manually: [cyan].plankton/test/test_hook.sh --self-test[/cyan]")
 
 
 if __name__ == "__main__":

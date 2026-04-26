@@ -70,7 +70,7 @@ version or add defensive nil checks in the jaq pipeline.
 
 ### Path handling edge cases
 
-Files outside `CLAUDE_PROJECT_DIR` lose relative path conversion
+Files outside `PLANKTON_PROJECT_DIR` lose relative path conversion
 for biome. The `_biome_relpath()` function falls back to absolute
 paths, which biome may reject for project-scoped rules. Consider
 warning when file is outside project root.

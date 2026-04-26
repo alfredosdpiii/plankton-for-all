@@ -13,16 +13,18 @@ PLAN.md
 # HuggingFace dataset cache (created in CWD by datasets library)
 datasets/
 hub/
-.claude/tests/hooks/results/.start_ts
-.claude/tests/hooks/results/archive/
+.plankton/test/results/.start_ts
+.plankton/test/results/archive/
+.pi-lens/
 benchmark/*
 !benchmark/swebench/
 benchmark/swebench/results/
 benchmark/swebench/patches/
 benchmark/archive/
 reports/
-.claude/hooks/report/
+.plankton/hooks/report/
 assets/internal/
 docs/internal/
 docs/plans/
 docs/specs/
+dist/

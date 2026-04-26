@@ -3,12 +3,12 @@
 ## TL;DR
 
 - **Purpose**: Paired A/B benchmark measuring Plankton hook
-  impact on SWE-bench task resolution via Claude Code
+  impact on SWE-bench task resolution via Pi
 - **Scope**: `benchmark/swebench/` (8 Python modules + CLI),
   `tests/unit/` (11 files, 315 tests — 10 swebench + 1 setup wizard),
   `tests/integration/` (7 files, 30 tests)
 - **Key responsibilities**:
-  - Drive Claude CLI to solve SWE-bench tasks under two
+  - Drive Pi CLI to solve SWE-bench tasks under two
     conditions: `baseline` (bare, no hooks) vs `plankton`
     (hooks active)
   - Orchestrate paired A/B runs with seeded ordering,
@@ -18,7 +18,7 @@
   - Phase 0 prerequisite validation (11 static + 4 live)
   - 2-task validation gate before full 50-task runs
   - HAL harness adapter for external evaluation
-- **Dependencies**: `scipy` (McNemar), Claude CLI,
+- **Dependencies**: `scipy` (McNemar), Pi CLI,
   optional `datasets` (HuggingFace task loading)
 
 ## Scope & Context
@@ -27,9 +27,9 @@
   improve SWE-bench resolve rates; reproducible via
   seeded ordering and pinned tool versions
 - **Non-goals**: Evaluating linter rule correctness;
-  testing Claude Code runtime; cross-model comparison
+  testing Pi runtime; cross-model comparison
   (planned Phase 4)
-- **Upstream**: Claude Code runtime (`claude -p` CLI),
+- **Upstream**: Pi runtime (`pi -p` CLI),
   SWE-bench task definitions, HAL evaluation harness
 - **Downstream**: Statistical reports (McNemar), JSONL
   result archives, patch files per task/condition
@@ -48,7 +48,7 @@ graph TB
     CLI --> P[prereqs.py<br/>Phase 0 checks]
 
     G -.->|lazy default| R
-    R -.->|lazy default| A[agent.py<br/>Claude subprocess]
+    R -.->|lazy default| A[agent.py<br/>Pi subprocess]
     HAL[hal_adapter.py<br/>HAL bridge] --> A
     HAL --> R
 
@@ -80,8 +80,8 @@ graph TD
     SELECT --> CHECKOUT[checkout_repo<br/>git clone + checkout base_commit]
     CHECKOUT --> FLIP[flip_order<br/>seeded coin flip per task]
 
-    FLIP --> BASE[Baseline Run<br/>bare claude -p, no hooks]
-    FLIP --> PLANK[Plankton Run<br/>inject hooks, claude -p]
+    FLIP --> BASE[Baseline Run<br/>bare pi -p, no hooks]
+    FLIP --> PLANK[Plankton Run<br/>inject hooks, pi -p]
 
     BASE --> PATCH1[Extract Patch<br/>git diff vs original SHA]
     PLANK --> PATCH2[Extract Patch<br/>git diff vs original SHA]
@@ -100,28 +100,28 @@ graph TD
 
 ## Core Components
 
-### agent.py (Claude Subprocess Wrapper)
+### agent.py (Pi Subprocess Wrapper)
 
 - **Location**: `benchmark/swebench/agent.py` (~243 lines)
-- **Responsibilities**: Spawn `claude -p` per task, extract
+- **Responsibilities**: Spawn `pi -p` per task, extract
   patches, parse output, handle TTY workaround
 - **Public API**: `solve(input_data, *, condition, model,
   timeout, dry_run=False) -> dict`
 - **Implementation**:
   - Writes prompt to `.swebench_prompt.txt` (large-stdin
-    workaround via `cat | claude`)
+    workaround via `cat | pi`)
   - TTY workaround: wraps in `script -q /dev/null sh -c ...`
   - Baseline injects `--setting-sources "" --settings
     bare-settings.json --strict-mcp-config
     --disable-slash-commands`
   - Both conditions: `--disallowedTools WebFetch,WebSearch,Task`
   - `_extract_patch`: SHA-anchored `git diff` to handle
-    cases where Claude commits during solve
-  - `_parse_claude_output`: JSON parse with fallback;
+    cases where Pi commits during solve
+  - `_parse_pi_output`: JSON parse with fallback;
     `error_type=infra` when returncode != 0 AND JSON invalid
   - Cost tracking: extracts `cost_usd` from top-level or
     nested `usage.cost_usd`
-  - `dry_run=True`: skips `git rev-parse HEAD` and Claude
+  - `dry_run=True`: skips `git rev-parse HEAD` and Pi
     subprocess; returns stub result with `metadata.dry_run=True`
 - **Conditions**: `baseline` (bare, no hooks) vs `plankton`
   (hooks active); raises `ValueError` on unknown condition
@@ -141,9 +141,9 @@ graph TD
 - **Implementation**:
   - Seeded `random.Random(f"{seed}:{task_id}")` for
     deterministic condition ordering
-  - `inject_hooks` copies `.claude/hooks/` + config files
-    (`.ruff.toml`, `ty.toml`, `.claude/subprocess-settings.json`)
-  - `remove_hooks` cleans up injected files + empty `.claude/`
+  - `inject_hooks` copies `.plankton/hooks/` + config files
+    (`.ruff.toml`, `ty.toml`, `.plankton/subprocess-settings.json`)
+  - `remove_hooks` cleans up injected files + empty `.pi/`
   - `run_task` resets repo between conditions, catches solve
     exceptions as synthetic infra errors, writes 2 JSONL + 2 patches
   - `run_all` safety: raises `RuntimeError` if `CLAUDE.md`
@@ -203,7 +203,7 @@ graph TD
   - `run_all_checks(*, plankton_root, full_mode, **overrides)
     -> list[PrereqResult]`
   - `format_report(results) -> str`
-- **11 static checks** (steps 1-11): claude version, bare
+- **11 static checks** (steps 1-11): pi version, bare
   alias, hooks dir, settings file, CLAUDE.md absent, script
   binary, eval harness, permission flags, tool blocklist,
   concurrency probe, archive clean
@@ -347,6 +347,6 @@ graph TD
 - **Single-threaded runs**: Tasks run sequentially; no
   parallelism support yet (Phase 3 target)
 - **Patch extraction fragility**: `git diff` may miss
-  changes if Claude uses non-standard git operations
+  changes if Pi uses non-standard git operations
 - **CLAUDE.md safety check**: `run_all` raises if file
   exists; requires manual rename to `.bak` before run
