@@ -39,6 +39,11 @@ function toggleLanguage(config: any, language: string): boolean {
   return next;
 }
 
+function setCorrectionModel(config: any, model: string): void {
+  config.subprocess = typeof config.subprocess === "object" && config.subprocess !== null ? config.subprocess : {};
+  config.subprocess.correction_model = model;
+}
+
 export function registerPlanktonCommands(pi: ExtensionAPI, state: PlanktonState): void {
   pi.registerCommand("plankton-status", {
     description: "Show Plankton configuration, hook resolution, and current-branch stats.",
@@ -114,6 +119,32 @@ export function registerPlanktonCommands(pi: ExtensionAPI, state: PlanktonState)
 
       sendText(pi, `Plankton ${language} linting ${enabled ? "enabled" : "disabled"}.`, ctx);
       if (ctx.hasUI) ctx.ui.notify(`Plankton ${language}: ${enabled ? "enabled" : "disabled"}`, "info");
+    },
+  });
+
+  pi.registerCommand("plankton-correction", {
+    description: "Set the correction subprocess model in .plankton/config.json.",
+    handler: async (args, ctx) => {
+      const model = firstArg(args);
+      if (!model) {
+        sendText(pi, "Usage: /plankton-correction <provider/model>", ctx);
+        return;
+      }
+
+      const context = await resolvePlanktonContext(ctx.cwd);
+      if (context.noOp || !context.configPath) {
+        sendText(pi, "No project marker found; Plankton was not auto-initialized.", ctx);
+        return;
+      }
+
+      await withFileMutationQueue(context.configPath, async () => {
+        const config = await readConfigForWrite(context);
+        setCorrectionModel(config, model);
+        await writeConfig(context, config);
+      });
+
+      sendText(pi, `Plankton correction model set to ${model}.`, ctx);
+      if (ctx.hasUI) ctx.ui.notify(`Plankton correction model: ${model}`, "info");
     },
   });
 }

@@ -79,9 +79,10 @@ During Pi tool execution:
 Use these Pi slash commands:
 
 ```text
-/plankton-status          Show config, hook paths, package managers, stats
-/plankton-lint <file>     Run linting manually for one file
-/plankton-toggle <lang>   Toggle a language in .plankton/config.json
+/plankton-status                     Show config, hook paths, package managers, stats
+/plankton-lint <file>                Run linting manually for one file
+/plankton-toggle <lang>              Toggle a language in .plankton/config.json
+/plankton-correction <provider/model> Set the correction subprocess model
 ```
 
 ## Tools
