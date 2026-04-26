@@ -4,8 +4,9 @@
   "author": "",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/alexfazio/plankton.git"
+    "url": "git+https://github.com/alfredosdpiii/plankton-for-all.git"
   },
+  "originalRepository": "https://github.com/alexfazio/plankton",
   "main": ".pi/extensions/plankton/index.ts",
   "files": [
     ".pi/extensions/plankton",
@@ -25,18 +26,19 @@
     "typescript": "^5.9.3"
   },
   "bugs": {
-    "url": "https://github.com/alexfazio/plankton/issues"
+    "url": "https://github.com/alfredosdpiii/plankton-for-all/issues"
   },
-  "description": "A Pi-exclusive extension for root-aware code quality enforcement with safe hook execution, linting, formatting, and package-manager guardrails.",
+  "description": "A fork of alexfazio/plankton that provides a Pi-exclusive extension for root-aware code quality enforcement.",
   "directories": {
     "doc": "docs",
     "test": "tests"
   },
-  "homepage": "https://github.com/alexfazio/plankton#readme",
+  "homepage": "https://github.com/alfredosdpiii/plankton-for-all#readme",
   "keywords": [
     "pi-package",
     "pi",
     "plankton",
+    "fork",
     "linting"
   ],
   "license": "ISC",

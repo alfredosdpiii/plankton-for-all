@@ -1,4 +1,10 @@
-# Plankton
+# Plankton for All
+
+This repository is a fork of the original
+[`alexfazio/plankton`](https://github.com/alexfazio/plankton) project. It keeps
+the original Pi Plankton idea while evolving this fork with project-local hooks,
+stricter configuration handling, package-manager guardrails, and regression
+coverage for multi-language linting.
 
 Plankton is a Pi-exclusive code-quality extension. It runs project-local bash
 hooks through a safe TypeScript extension, blocks protected linter config edits,
